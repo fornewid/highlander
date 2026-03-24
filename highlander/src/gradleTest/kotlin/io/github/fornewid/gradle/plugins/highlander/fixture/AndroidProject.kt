@@ -4,9 +4,9 @@ import java.io.File
 import java.util.UUID
 
 internal class AndroidProject(
-    private val manifestContent: String = DEFAULT_MANIFEST,
     private val pluginConfig: String = DEFAULT_PLUGIN_CONFIG,
-    private val androidExtra: String = "",
+    private val appResources: Map<String, String> = emptyMap(),
+    private val moduleResources: Map<String, String> = emptyMap(),
 ) : AutoCloseable {
 
     val dir: File = File("build/gradleTest/${UUID.randomUUID()}").apply { mkdirs() }
@@ -21,10 +21,11 @@ internal class AndroidProject(
             """
             rootProject.name = "test-project"
             include ':app'
+            include ':module1'
             """.trimIndent()
         )
 
-        // root build.gradle - inject both AGP and highlander via buildscript
+        // root build.gradle
         dir.resolve("build.gradle").writeText(
             """
             buildscript {
@@ -63,8 +64,6 @@ internal class AndroidProject(
 
         // app module
         val appDir = dir.resolve("app").apply { mkdirs() }
-
-        // app/build.gradle - use apply plugin instead of plugins {} block
         appDir.resolve("build.gradle").writeText(
             """
             apply plugin: 'com.android.application'
@@ -72,40 +71,70 @@ internal class AndroidProject(
 
             android {
                 compileSdk 34
-                namespace "io.github.fornewid.test"
+                namespace "io.github.fornewid.test.app"
                 defaultConfig {
                     minSdk 23
                     targetSdk 34
                 }
-                $androidExtra
+            }
+
+            dependencies {
+                implementation project(':module1')
             }
 
             $pluginConfig
             """.trimIndent()
         )
 
-        // AndroidManifest.xml
-        val srcDir = appDir.resolve("src/main").apply { mkdirs() }
-        srcDir.resolve("AndroidManifest.xml").writeText(manifestContent)
-    }
-
-    fun updateManifest(newContent: String) {
-        dir.resolve("app/src/main/AndroidManifest.xml").writeText(newContent)
-    }
-
-    fun updatePluginConfig(newConfig: String) {
-        val appBuildFile = dir.resolve("app/build.gradle")
-        val content = appBuildFile.readText()
-        val updated = content.replace(
-            Regex("highlander\\s*\\{[\\s\\S]*?\\{[\\s\\S]*?}[\\s\\S]*?}"),
-            newConfig
+        val appSrcDir = appDir.resolve("src/main").apply { mkdirs() }
+        appSrcDir.resolve("AndroidManifest.xml").writeText(
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+                <application>
+                    <activity android:name=".MainActivity" android:exported="true" />
+                </application>
+            </manifest>
+            """.trimIndent()
         )
-        appBuildFile.writeText(updated)
-    }
 
-    fun readBaselineFile(path: String): String? {
-        val file = dir.resolve("app/$path")
-        return if (file.exists()) file.readText() else null
+        // Create app resources
+        for ((path, content) in appResources) {
+            val file = appSrcDir.resolve("res/$path")
+            file.parentFile.mkdirs()
+            file.writeText(content)
+        }
+
+        // module1 - Android library
+        val module1Dir = dir.resolve("module1").apply { mkdirs() }
+        module1Dir.resolve("build.gradle").writeText(
+            """
+            apply plugin: 'com.android.library'
+
+            android {
+                compileSdk 34
+                namespace "io.github.fornewid.test.module1"
+                defaultConfig {
+                    minSdk 23
+                }
+            }
+            """.trimIndent()
+        )
+
+        val module1SrcDir = module1Dir.resolve("src/main").apply { mkdirs() }
+        module1SrcDir.resolve("AndroidManifest.xml").writeText(
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <manifest xmlns:android="http://schemas.android.com/apk/res/android" />
+            """.trimIndent()
+        )
+
+        // Create module1 resources
+        for ((path, content) in moduleResources) {
+            val file = module1SrcDir.resolve("res/$path")
+            file.parentFile.mkdirs()
+            file.writeText(content)
+        }
     }
 
     override fun close() {
@@ -127,32 +156,13 @@ internal class AndroidProject(
     }
 
     companion object {
-        val DEFAULT_MANIFEST = """
-            <?xml version="1.0" encoding="utf-8"?>
-            <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-                <uses-permission android:name="android.permission.INTERNET" />
-                <application>
-                    <activity
-                        android:name=".MainActivity"
-                        android:exported="true">
-                        <intent-filter>
-                            <action android:name="android.intent.action.MAIN" />
-                            <category android:name="android.intent.category.LAUNCHER" />
-                        </intent-filter>
-                    </activity>
-                </application>
-            </manifest>
-        """.trimIndent()
-
         val DEFAULT_PLUGIN_CONFIG = """
             highlander {
                 configuration("release") {
-                    usesPermission = true
-                    activity = true
-                    service = true
-                    receiver = true
-                    provider = true
-                    usesFeature = true
+                    resources = true
+                    nativeLibs = false
+                    assets = false
+                    severity = "fail"
                 }
             }
         """.trimIndent()

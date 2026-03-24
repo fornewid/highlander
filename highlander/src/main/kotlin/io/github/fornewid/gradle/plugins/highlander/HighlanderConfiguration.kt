@@ -18,99 +18,23 @@ public open class HighlanderConfiguration @Inject constructor(
     @Input
     public override fun getName(): String = configurationName
 
-    /** Guard uses-sdk declarations (minSdkVersion, targetSdkVersion) */
+    /** Scan for duplicate Android resources (res/) */
     @get:Input
-    public var usesSdk: Boolean = false
+    public var resources: Boolean = true
 
-    /** Guard uses-permission declarations */
+    /** Scan for duplicate native libraries (.so) */
     @get:Input
-    public var usesPermission: Boolean = true
+    public var nativeLibs: Boolean = true
 
-    /** Guard permission declarations */
+    /** Scan for duplicate assets */
     @get:Input
-    public var permission: Boolean = false
+    public var assets: Boolean = true
 
-    /** Guard activity declarations */
+    /** Severity: "fail" throws GradleException, "warn" only logs */
     @get:Input
-    public var activity: Boolean = true
+    public var severity: String = "fail"
 
-    /** Guard activity-alias declarations */
+    /** Resource keys to ignore (intentional overrides) */
     @get:Input
-    public var activityAlias: Boolean = true
-
-    /** Guard service declarations */
-    @get:Input
-    public var service: Boolean = true
-
-    /** Guard receiver declarations */
-    @get:Input
-    public var receiver: Boolean = true
-
-    /** Guard provider declarations */
-    @get:Input
-    public var provider: Boolean = true
-
-    /** Guard uses-feature declarations */
-    @get:Input
-    public var usesFeature: Boolean = true
-
-    /** Guard intent-filter declarations on exported components */
-    @get:Input
-    public var intentFilter: Boolean = false
-
-    /** Guard androidx.startup initializer declarations */
-    @get:Input
-    public var startup: Boolean = true
-
-    /** Guard uses-permission-sdk-23 declarations */
-    @get:Input
-    public var usesPermissionSdk23: Boolean = false
-
-    /** Guard supports-screens declarations */
-    @get:Input
-    public var supportsScreens: Boolean = false
-
-    /** Guard compatible-screens declarations */
-    @get:Input
-    public var compatibleScreens: Boolean = false
-
-    /** Guard uses-configuration declarations */
-    @get:Input
-    public var usesConfiguration: Boolean = false
-
-    /** Guard supports-gl-texture declarations */
-    @get:Input
-    public var supportsGlTexture: Boolean = false
-
-    /** Guard queries declarations */
-    @get:Input
-    public var queries: Boolean = false
-
-    /** Guard meta-data declarations (values redacted for non-primitives) */
-    @get:Input
-    public var metaData: Boolean = false
-
-    /** Guard uses-library declarations */
-    @get:Input
-    public var usesLibrary: Boolean = false
-
-    /** Guard uses-native-library declarations */
-    @get:Input
-    public var usesNativeLibrary: Boolean = false
-
-    /** Guard profileable declarations */
-    @get:Input
-    public var profileable: Boolean = false
-
-    /** Only include exported components (activity, service, receiver, provider) in the baseline */
-    @get:Input
-    public var exportedOnly: Boolean = true
-
-    /** Only include required entries for uses-feature and uses-library in the baseline */
-    @get:Input
-    public var requiredOnly: Boolean = true
-
-    /** Enable source-attributed format grouped by library/module origin */
-    @get:Input
-    public var sources: Boolean = false
+    public var allowlist: Set<String> = emptySet()
 }

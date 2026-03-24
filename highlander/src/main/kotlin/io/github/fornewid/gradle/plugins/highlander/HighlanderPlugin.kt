@@ -8,7 +8,7 @@ import org.gradle.language.base.plugins.LifecycleBasePlugin
 import java.util.Properties
 
 /**
- * A plugin for guarding against unintentional AndroidManifest.xml changes
+ * A Gradle plugin that detects duplicate resources across Android dependencies.
  */
 public class HighlanderPlugin : Plugin<Project> {
 
@@ -18,8 +18,6 @@ public class HighlanderPlugin : Plugin<Project> {
         internal const val HIGHLANDER_EXTENSION_NAME = "highlander"
 
         internal const val HIGHLANDER_TASK_NAME = "highlander"
-
-        internal const val HIGHLANDER_BASELINE_TASK_NAME = "highlanderBaseline"
 
         internal val VERSION: String by lazy {
             HighlanderPlugin::class.java
@@ -36,29 +34,22 @@ public class HighlanderPlugin : Plugin<Project> {
             target.objects
         )
 
-        val guardTask = target.tasks.register(HIGHLANDER_TASK_NAME) {
+        val checkTask = target.tasks.register(HIGHLANDER_TASK_NAME) {
             group = HIGHLANDER_TASK_GROUP
-            description = "Guard against unintentional manifest changes"
-        }
-        val baselineTask = target.tasks.register(HIGHLANDER_BASELINE_TASK_NAME) {
-            group = HIGHLANDER_TASK_GROUP
-            description = "Save current manifest as baseline"
+            description = "Detect duplicate resources across dependencies"
         }
 
-        // Only application modules produce a fully merged manifest that includes
-        // all transitive dependency manifests. Library modules only merge their own
-        // manifest with direct dependencies, making their baselines incomplete.
         target.pluginManager.withPlugin("com.android.application") {
-            AndroidVariantHandler.configureVariants(target, extension, guardTask, baselineTask)
+            AndroidVariantHandler.configureVariants(target, extension, checkTask)
         }
 
-        attachToCheckTask(target, guardTask)
+        attachToCheckTask(target, checkTask)
     }
 
-    private fun attachToCheckTask(target: Project, guardTask: TaskProvider<*>) {
+    private fun attachToCheckTask(target: Project, checkTask: TaskProvider<*>) {
         target.pluginManager.withPlugin("base") {
             target.tasks.named(LifecycleBasePlugin.CHECK_TASK_NAME).configure {
-                this.dependsOn(guardTask)
+                this.dependsOn(checkTask)
             }
         }
     }

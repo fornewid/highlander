@@ -1,15 +1,14 @@
 package io.github.fornewid.gradle.plugins.highlander.internal
 
-import com.android.build.api.artifact.SingleArtifact
 import com.android.build.api.variant.AndroidComponentsExtension
 import com.android.build.api.variant.Variant
 import io.github.fornewid.gradle.plugins.highlander.HighlanderConfiguration
 import io.github.fornewid.gradle.plugins.highlander.HighlanderPluginExtension
-import io.github.fornewid.gradle.plugins.highlander.internal.list.HighlanderListTask
-import io.github.fornewid.gradle.plugins.highlander.internal.sources.ManifestSourcesDiffTask
-import io.github.fornewid.gradle.plugins.highlander.internal.utils.OutputFileUtils
+import io.github.fornewid.gradle.plugins.highlander.internal.task.HighlanderCheckTask
 import org.gradle.api.GradleException
 import org.gradle.api.Project
+import org.gradle.api.artifacts.type.ArtifactTypeDefinition
+import org.gradle.api.attributes.Attribute
 import org.gradle.api.tasks.TaskProvider
 
 /**
@@ -19,18 +18,21 @@ import org.gradle.api.tasks.TaskProvider
  */
 internal object AndroidVariantHandler {
 
+    private const val ARTIFACT_TYPE_RES = "android-res"
+    private const val ARTIFACT_TYPE_JNI = "android-jni"
+    private const val ARTIFACT_TYPE_ASSETS = "android-assets"
+
     fun configureVariants(
         project: Project,
         extension: HighlanderPluginExtension,
-        guardTask: TaskProvider<*>,
-        baselineTask: TaskProvider<*>,
+        checkTask: TaskProvider<*>,
     ) {
         val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
 
         androidComponents.onVariants { variant ->
             extension.configurations.configureEach {
                 if (configurationName == variant.name) {
-                    registerTasks(project, extension.baselineDir.get(), this, variant, guardTask, baselineTask)
+                    registerCheckTask(project, this, variant, checkTask)
                 }
             }
         }
@@ -56,8 +58,7 @@ internal object AndroidVariantHandler {
             }
         }
 
-        guardTask.configure { doFirst { validateConfigurations() } }
-        baselineTask.configure { doFirst { validateConfigurations() } }
+        checkTask.configure { doFirst { validateConfigurations() } }
     }
 
     @Suppress("DEPRECATION")
@@ -65,64 +66,77 @@ internal object AndroidVariantHandler {
         return if (isEmpty()) "" else get(0).toUpperCase() + substring(1)
     }
 
-    /**
-     * Converts a camelCase string to kebab-case.
-     * AGP generates blame report files using this format.
-     * e.g., "devRelease" -> "dev-release", "release" -> "release", "dev2Debug" -> "dev2-debug"
-     */
-    internal fun String.toKebabCase(): String {
-        return replace(Regex("([a-z0-9])([A-Z])"), "$1-$2").lowercase()
-    }
-
-    private fun registerTasks(
+    private fun registerCheckTask(
         project: Project,
-        baselineDir: String,
         config: HighlanderConfiguration,
         variant: Variant,
-        guardTask: TaskProvider<*>,
-        baselineTask: TaskProvider<*>,
+        checkTask: TaskProvider<*>,
     ) {
-        val mergedManifest = variant.artifacts.get(SingleArtifact.MERGED_MANIFEST)
         val capitalizedName = config.configurationName.capitalize()
-        val baselineDirectory = OutputFileUtils.highlanderDir(project, baselineDir)
-        val filePrefix = "${config.configurationName}AndroidManifest"
-        val blameLogProvider = project.layout.buildDirectory
-            .file("outputs/logs/manifest-merger-${config.configurationName.toKebabCase()}-report.txt")
+        val runtimeClasspath = project.configurations.getByName(
+            "${config.configurationName}RuntimeClasspath"
+        )
 
-        val perConfigGuardTask = project.tasks.register(
+        val artifactTypeAttr = Attribute.of(
+            ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE.name,
+            String::class.java
+        )
+
+        val resArtifacts = if (config.resources) {
+            runtimeClasspath.incoming.artifactView {
+                attributes.attribute(artifactTypeAttr, ARTIFACT_TYPE_RES)
+                isLenient = true
+            }.artifacts
+        } else null
+
+        val jniArtifacts = if (config.nativeLibs) {
+            runtimeClasspath.incoming.artifactView {
+                attributes.attribute(artifactTypeAttr, ARTIFACT_TYPE_JNI)
+                isLenient = true
+            }.artifacts
+        } else null
+
+        val assetArtifacts = if (config.assets) {
+            runtimeClasspath.incoming.artifactView {
+                attributes.attribute(artifactTypeAttr, ARTIFACT_TYPE_ASSETS)
+                isLenient = true
+            }.artifacts
+        } else null
+
+        // Collect the current project's own resource directories
+        val localResDirs = if (config.resources) {
+            variant.sources.res?.all
+        } else null
+
+        val perVariantTask = project.tasks.register(
             "highlander$capitalizedName",
-            HighlanderListTask::class.java
+            HighlanderCheckTask::class.java
         ) {
-            setParams(config, mergedManifest, project.path, baselineDirectory, filePrefix, false)
-        }
-        guardTask.configure { dependsOn(perConfigGuardTask) }
+            configurationName.set(config.configurationName)
+            projectPath.set(project.path)
+            severity.set(config.severity)
+            scanResources.set(config.resources)
+            scanNativeLibs.set(config.nativeLibs)
+            scanAssets.set(config.assets)
+            allowlist.set(config.allowlist)
 
-        val perConfigBaselineTask = project.tasks.register(
-            "highlanderBaseline$capitalizedName",
-            HighlanderListTask::class.java
-        ) {
-            setParams(config, mergedManifest, project.path, baselineDirectory, filePrefix, true)
-        }
-        baselineTask.configure { dependsOn(perConfigBaselineTask) }
-
-        if (config.sources) {
-            val sourcesGuardTask = project.tasks.register(
-                "highlanderSources$capitalizedName",
-                ManifestSourcesDiffTask::class.java
-            ) {
-                dependsOn(mergedManifest)
-                setParams(config, mergedManifest, blameLogProvider, project.path, project.rootDir, baselineDirectory, filePrefix, false)
+            if (resArtifacts != null) {
+                resourceFiles.set(resArtifacts.artifactFiles)
+                this.resArtifacts = resArtifacts
             }
-            perConfigGuardTask.configure { dependsOn(sourcesGuardTask) }
-
-            val sourcesBaselineTask = project.tasks.register(
-                "highlanderSourcesBaseline$capitalizedName",
-                ManifestSourcesDiffTask::class.java
-            ) {
-                dependsOn(mergedManifest)
-                setParams(config, mergedManifest, blameLogProvider, project.path, project.rootDir, baselineDirectory, filePrefix, true)
+            if (localResDirs != null) {
+                localResourceDirs.set(localResDirs)
             }
-            perConfigBaselineTask.configure { dependsOn(sourcesBaselineTask) }
+            if (jniArtifacts != null) {
+                nativeLibFiles.set(jniArtifacts.artifactFiles)
+                this.jniArtifacts = jniArtifacts
+            }
+            if (assetArtifacts != null) {
+                assetFiles.set(assetArtifacts.artifactFiles)
+                this.assetArtifactCollection = assetArtifacts
+            }
         }
+
+        checkTask.configure { dependsOn(perVariantTask) }
     }
 }

@@ -20,6 +20,9 @@ dependencies {
 
 highlander {
     configuration("release") {
-        sources = true
+        resources = true
+        nativeLibs = true
+        assets = true
+        severity = "warn"
     }
 }
