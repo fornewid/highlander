@@ -1,0 +1,67 @@
+public class io/github/fornewid/gradle/plugins/highlander/HighlanderConfiguration : org/gradle/api/Named {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun getActivity ()Z
+	public final fun getActivityAlias ()Z
+	public final fun getCompatibleScreens ()Z
+	public final fun getConfigurationName ()Ljava/lang/String;
+	public final fun getExportedOnly ()Z
+	public final fun getIntentFilter ()Z
+	public final fun getMetaData ()Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getPermission ()Z
+	public final fun getProfileable ()Z
+	public final fun getProvider ()Z
+	public final fun getQueries ()Z
+	public final fun getReceiver ()Z
+	public final fun getRequiredOnly ()Z
+	public final fun getService ()Z
+	public final fun getSources ()Z
+	public final fun getStartup ()Z
+	public final fun getSupportsGlTexture ()Z
+	public final fun getSupportsScreens ()Z
+	public final fun getUsesConfiguration ()Z
+	public final fun getUsesFeature ()Z
+	public final fun getUsesLibrary ()Z
+	public final fun getUsesNativeLibrary ()Z
+	public final fun getUsesPermission ()Z
+	public final fun getUsesPermissionSdk23 ()Z
+	public final fun getUsesSdk ()Z
+	public final fun setActivity (Z)V
+	public final fun setActivityAlias (Z)V
+	public final fun setCompatibleScreens (Z)V
+	public final fun setExportedOnly (Z)V
+	public final fun setIntentFilter (Z)V
+	public final fun setMetaData (Z)V
+	public final fun setPermission (Z)V
+	public final fun setProfileable (Z)V
+	public final fun setProvider (Z)V
+	public final fun setQueries (Z)V
+	public final fun setReceiver (Z)V
+	public final fun setRequiredOnly (Z)V
+	public final fun setService (Z)V
+	public final fun setSources (Z)V
+	public final fun setStartup (Z)V
+	public final fun setSupportsGlTexture (Z)V
+	public final fun setSupportsScreens (Z)V
+	public final fun setUsesConfiguration (Z)V
+	public final fun setUsesFeature (Z)V
+	public final fun setUsesLibrary (Z)V
+	public final fun setUsesNativeLibrary (Z)V
+	public final fun setUsesPermission (Z)V
+	public final fun setUsesPermissionSdk23 (Z)V
+	public final fun setUsesSdk (Z)V
+}
+
+public final class io/github/fornewid/gradle/plugins/highlander/HighlanderPlugin : org/gradle/api/Plugin {
+	public fun <init> ()V
+	public synthetic fun apply (Ljava/lang/Object;)V
+	public fun apply (Lorg/gradle/api/Project;)V
+}
+
+public class io/github/fornewid/gradle/plugins/highlander/HighlanderPluginExtension {
+	public fun <init> (Lorg/gradle/api/model/ObjectFactory;)V
+	public final fun configuration (Ljava/lang/String;)V
+	public final fun configuration (Ljava/lang/String;Lorg/gradle/api/Action;)V
+	public final fun getBaselineDir ()Lorg/gradle/api/provider/Property;
+}
+

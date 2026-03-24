@@ -1,0 +1,18 @@
+pluginManagement {
+    includeBuild('highlander')
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+include ":sample:app"
+include ":sample:module1"
+include ":sample:module2"
+
+includeBuild('highlander') {
+    dependencySubstitution {
+        substitute module('io.github.fornewid.highlander:highlander') using project(':')
+    }
+}

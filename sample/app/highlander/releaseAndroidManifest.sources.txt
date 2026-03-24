@@ -1,0 +1,11 @@
+[:sample:app]
+uses-permission:
+  android.permission.INTERNET
+
+activity:
+  io.github.fornewid.highlander.sample.app.MainActivity (exported)
+
+[:sample:module1]
+uses-permission:
+  android.permission.ACCESS_NETWORK_STATE
+  android.permission.INTERNET
