@@ -53,17 +53,14 @@ internal class HighlanderPluginTest {
     }
 
     @Test
-    fun `guard task creates baseline on first run when no baseline exists`() {
+    fun `guard task fails when baseline does not exist`() {
         AndroidProject(
             appResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
             moduleResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
         ).use { project ->
-            // First run should succeed (auto-creates baseline)
-            build(project, ":app:highlanderRelease")
-
-            val baseline = project.readFile("app/highlander/releaseResources.txt")
-            assertThat(baseline).isNotNull()
-            assertThat(baseline).contains("drawable/ic_shared")
+            val result = buildAndFail(project, ":app:highlanderRelease")
+            assertThat(result.output).contains("Baseline not found")
+            assertThat(result.output).contains("highlanderBaseline")
         }
     }
 

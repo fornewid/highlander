@@ -124,11 +124,20 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
     ): String? {
         val currentContent = BaselineFormat.serialize(current)
 
-        if (isBaseline || !file.exists()) {
+        if (isBaseline) {
             file.writeText(currentContent)
             val relPath = file.relativeTo(project.projectDir)
             logger.lifecycle("Highlander baseline created: $relPath")
             return null
+        }
+
+        if (!file.exists()) {
+            val relPath = file.relativeTo(project.projectDir)
+            return buildString {
+                appendLine("=== $label ===")
+                appendLine("Baseline not found: $relPath")
+                appendLine("Run highlanderBaseline to create it.")
+            }
         }
 
         val expectedContent = file.readText()
