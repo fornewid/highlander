@@ -1,17 +1,13 @@
 public class io/github/fornewid/gradle/plugins/highlander/HighlanderConfiguration : org/gradle/api/Named {
 	public fun <init> (Ljava/lang/String;)V
-	public final fun getAllowlist ()Ljava/util/Set;
 	public final fun getAssets ()Z
 	public final fun getConfigurationName ()Ljava/lang/String;
 	public fun getName ()Ljava/lang/String;
 	public final fun getNativeLibs ()Z
 	public final fun getResources ()Z
-	public final fun getSeverity ()Ljava/lang/String;
-	public final fun setAllowlist (Ljava/util/Set;)V
 	public final fun setAssets (Z)V
 	public final fun setNativeLibs (Z)V
 	public final fun setResources (Z)V
-	public final fun setSeverity (Ljava/lang/String;)V
 }
 
 public final class io/github/fornewid/gradle/plugins/highlander/HighlanderPlugin : org/gradle/api/Plugin {
@@ -24,5 +20,6 @@ public class io/github/fornewid/gradle/plugins/highlander/HighlanderPluginExtens
 	public fun <init> (Lorg/gradle/api/model/ObjectFactory;)V
 	public final fun configuration (Ljava/lang/String;)V
 	public final fun configuration (Ljava/lang/String;Lorg/gradle/api/Action;)V
+	public final fun getBaselineDir ()Lorg/gradle/api/provider/Property;
 }
 

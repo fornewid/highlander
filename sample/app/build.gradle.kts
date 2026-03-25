@@ -23,6 +23,5 @@ highlander {
         resources = true
         nativeLibs = true
         assets = true
-        severity = "warn"
     }
 }

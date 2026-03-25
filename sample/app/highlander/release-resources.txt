@@ -1,0 +1,3 @@
+drawable/ic_close:
+  - :sample:app
+  - :sample:module1

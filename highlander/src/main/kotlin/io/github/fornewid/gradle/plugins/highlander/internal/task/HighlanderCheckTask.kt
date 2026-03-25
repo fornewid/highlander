@@ -1,6 +1,7 @@
 package io.github.fornewid.gradle.plugins.highlander.internal.task
 
 import io.github.fornewid.gradle.plugins.highlander.HighlanderPlugin
+import io.github.fornewid.gradle.plugins.highlander.internal.BaselineFormat
 import io.github.fornewid.gradle.plugins.highlander.internal.models.DuplicateEntry
 import io.github.fornewid.gradle.plugins.highlander.internal.models.SourceOrigin
 import io.github.fornewid.gradle.plugins.highlander.internal.scanner.AssetScanner
@@ -10,14 +11,15 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.artifacts.ArtifactCollection
 import org.gradle.api.file.Directory
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.FileCollection
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
-import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
@@ -27,194 +29,170 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
 
     init {
         group = HighlanderPlugin.HIGHLANDER_TASK_GROUP
-        description = "Detect duplicate resources across dependencies"
+        doNotTrackState("Highlander always compares against baseline")
     }
 
-    @get:Input
-    abstract val configurationName: Property<String>
+    @get:Input abstract val configurationName: Property<String>
+    @get:Input abstract val projectPath: Property<String>
+    @get:Input abstract val shouldBaseline: Property<Boolean>
+    @get:Input abstract val scanResources: Property<Boolean>
+    @get:Input abstract val scanNativeLibs: Property<Boolean>
+    @get:Input abstract val scanAssets: Property<Boolean>
 
-    @get:Input
-    abstract val projectPath: Property<String>
+    @get:Internal abstract val baselineDir: DirectoryProperty
 
-    @get:Input
-    abstract val severity: Property<String>
-
-    @get:Input
-    abstract val scanResources: Property<Boolean>
-
-    @get:Input
-    abstract val scanNativeLibs: Property<Boolean>
-
-    @get:Input
-    abstract val scanAssets: Property<Boolean>
-
-    @get:Input
-    abstract val allowlist: SetProperty<String>
-
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    @get:Optional
+    // --- Dependency inputs ---
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
     abstract val resourceFiles: Property<FileCollection>
-
-    /** Local project resource directories from variant.sources.res */
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    @get:Optional
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
     abstract val localResourceDirs: ListProperty<Collection<Directory>>
-
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    @get:Optional
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
     abstract val nativeLibFiles: Property<FileCollection>
-
-    /** Local project jniLibs directories from variant.sources.jniLibs */
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    @get:Optional
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
     abstract val localNativeLibDirs: ListProperty<Collection<Directory>>
-
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    @get:Optional
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
     abstract val assetFiles: Property<FileCollection>
-
-    /** Local project asset directories from variant.sources.assets */
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    @get:Optional
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
     abstract val localAssetSourceDirs: ListProperty<Collection<Directory>>
 
-    @get:Internal
-    var resArtifacts: ArtifactCollection? = null
-
-    @get:Internal
-    var jniArtifacts: ArtifactCollection? = null
-
-    @get:Internal
-    var assetArtifactCollection: ArtifactCollection? = null
+    @get:Internal var resArtifacts: ArtifactCollection? = null
+    @get:Internal var jniArtifacts: ArtifactCollection? = null
+    @get:Internal var assetArtifactCollection: ArtifactCollection? = null
 
     @TaskAction
     fun execute() {
-        val allDuplicates = mutableListOf<Pair<String, List<DuplicateEntry>>>()
-        val allowedKeys = allowlist.get()
+        val variantName = configurationName.get()
+        val dir = baselineDir.get().asFile.also { it.mkdirs() }
+        val isBaseline = shouldBaseline.get()
+        val diffs = mutableListOf<String>()
 
         if (scanResources.get()) {
-            val sources = mutableListOf<Pair<File, SourceOrigin>>()
-
-            // Add dependency resources (from artifactView)
-            sources.addAll(resolveArtifactSources(resArtifacts))
-
-            // Add local project resource directories
-            if (localResourceDirs.isPresent) {
-                val localOrigin = SourceOrigin.Module(projectPath.get())
-                for (dirCollection in localResourceDirs.get()) {
-                    for (dir in dirCollection) {
-                        sources.add(dir.asFile to localOrigin)
-                    }
-                }
-            }
-
-            val duplicates = ResourceScanner.scan(sources)
-                .filter { it.resourceKey !in allowedKeys }
-            if (duplicates.isNotEmpty()) {
-                allDuplicates.add("Duplicate Resources" to duplicates)
-            }
+            val result = processBaseline(
+                label = "resources",
+                file = File(dir, "$variantName-resources.txt"),
+                current = scanRes(),
+                isBaseline = isBaseline,
+            )
+            if (result != null) diffs.add(result)
         }
 
         if (scanNativeLibs.get()) {
-            val sources = mutableListOf<Pair<File, SourceOrigin>>()
-            sources.addAll(resolveArtifactSources(jniArtifacts))
-
-            if (localNativeLibDirs.isPresent) {
-                val localOrigin = SourceOrigin.Module(projectPath.get())
-                for (dirCollection in localNativeLibDirs.get()) {
-                    for (dir in dirCollection) {
-                        sources.add(dir.asFile to localOrigin)
-                    }
-                }
-            }
-
-            val duplicates = NativeLibScanner.scan(sources)
-                .filter { it.resourceKey !in allowedKeys }
-            if (duplicates.isNotEmpty()) {
-                allDuplicates.add("Duplicate Native Libraries" to duplicates)
-            }
+            val result = processBaseline(
+                label = "native-libs",
+                file = File(dir, "$variantName-native-libs.txt"),
+                current = scanJni(),
+                isBaseline = isBaseline,
+            )
+            if (result != null) diffs.add(result)
         }
 
         if (scanAssets.get()) {
-            val sources = mutableListOf<Pair<File, SourceOrigin>>()
-            sources.addAll(resolveArtifactSources(assetArtifactCollection))
-
-            if (localAssetSourceDirs.isPresent) {
-                val localOrigin = SourceOrigin.Module(projectPath.get())
-                for (dirCollection in localAssetSourceDirs.get()) {
-                    for (dir in dirCollection) {
-                        sources.add(dir.asFile to localOrigin)
-                    }
-                }
-            }
-
-            val duplicates = AssetScanner.scan(sources)
-                .filter { it.resourceKey !in allowedKeys }
-            if (duplicates.isNotEmpty()) {
-                allDuplicates.add("Duplicate Assets" to duplicates)
-            }
+            val result = processBaseline(
+                label = "assets",
+                file = File(dir, "$variantName-assets.txt"),
+                current = scanAssets(),
+                isBaseline = isBaseline,
+            )
+            if (result != null) diffs.add(result)
         }
 
-        if (allDuplicates.isEmpty()) {
-            logger.lifecycle(
-                "Highlander: No duplicates found in ${projectPath.get()} (${configurationName.get()})"
-            )
+        if (diffs.isEmpty() && !isBaseline) {
+            println("Highlander: No changes in ${projectPath.get()} ($variantName)")
             return
         }
 
-        val report = buildReport(allDuplicates)
-
-        if (severity.get() == "fail") {
+        if (diffs.isNotEmpty()) {
+            val report = buildString {
+                appendLine()
+                appendLine("Highlander: Duplicates changed in ${projectPath.get()} ($variantName)")
+                appendLine()
+                diffs.forEach { appendLine(it) }
+                appendLine("If this is expected, re-baseline with:")
+                appendLine("  ./gradlew ${projectPath.get()}:highlanderBaseline${variantName.replaceFirstChar { it.uppercase() }}")
+            }
             throw GradleException(report)
-        } else {
-            logger.warn(report)
+        }
+    }
+
+    /**
+     * Returns null if no diff, or a diff string if baseline changed.
+     * In baseline mode, always writes and returns null.
+     */
+    private fun processBaseline(
+        label: String,
+        file: File,
+        current: List<DuplicateEntry>,
+        isBaseline: Boolean,
+    ): String? {
+        val currentContent = BaselineFormat.serialize(current)
+
+        if (isBaseline || !file.exists()) {
+            file.writeText(currentContent)
+            val relPath = file.relativeTo(project.projectDir)
+            println("Highlander baseline created: $relPath")
+            return null
+        }
+
+        val expectedContent = file.readText()
+        if (currentContent == expectedContent) return null
+
+        // Build diff
+        val expected = BaselineFormat.parse(expectedContent)
+        val added = current.filter { it !in expected }
+        val removed = expected.filter { it !in current }
+
+        if (added.isEmpty() && removed.isEmpty()) return null
+
+        return buildString {
+            appendLine("=== $label ===")
+            for (entry in removed) {
+                appendLine("- ${entry.resourceKey}")
+            }
+            for (entry in added) {
+                appendLine("+ ${entry.resourceKey}:")
+                for (source in entry.sources) {
+                    appendLine("+   - ${source.displayName}")
+                }
+            }
+        }
+    }
+
+    private fun scanRes(): List<DuplicateEntry> {
+        val sources = mutableListOf<Pair<File, SourceOrigin>>()
+        sources.addAll(resolveArtifactSources(resArtifacts))
+        addLocalDirs(sources, localResourceDirs)
+        return ResourceScanner.scan(sources)
+    }
+
+    private fun scanJni(): List<DuplicateEntry> {
+        val sources = mutableListOf<Pair<File, SourceOrigin>>()
+        sources.addAll(resolveArtifactSources(jniArtifacts))
+        addLocalDirs(sources, localNativeLibDirs)
+        return NativeLibScanner.scan(sources)
+    }
+
+    private fun scanAssets(): List<DuplicateEntry> {
+        val sources = mutableListOf<Pair<File, SourceOrigin>>()
+        sources.addAll(resolveArtifactSources(assetArtifactCollection))
+        addLocalDirs(sources, localAssetSourceDirs)
+        return AssetScanner.scan(sources)
+    }
+
+    private fun addLocalDirs(
+        target: MutableList<Pair<File, SourceOrigin>>,
+        dirs: ListProperty<Collection<Directory>>,
+    ) {
+        if (!dirs.isPresent) return
+        val localOrigin = SourceOrigin.Module(projectPath.get())
+        for (dirCollection in dirs.get()) {
+            for (dir in dirCollection) {
+                target.add(dir.asFile to localOrigin)
+            }
         }
     }
 
     private fun resolveArtifactSources(artifacts: ArtifactCollection?): List<Pair<File, SourceOrigin>> {
         if (artifacts == null) return emptyList()
-        return artifacts.artifacts.map { artifact ->
-            artifact.file to SourceOrigin.from(artifact.id.componentIdentifier)
-        }
-    }
-
-    private fun buildReport(sections: List<Pair<String, List<DuplicateEntry>>>): String {
-        val totalCount = sections.sumOf { it.second.size }
-        val sb = StringBuilder()
-
-        sb.appendLine()
-        sb.appendLine(
-            "Highlander: Duplicates detected in ${projectPath.get()} (${configurationName.get()})"
-        )
-        sb.appendLine()
-
-        for ((title, duplicates) in sections) {
-            sb.appendLine("=== $title (${duplicates.size}) ===")
-            for (entry in duplicates) {
-                sb.appendLine("  ${entry.resourceKey}:")
-                for (source in entry.sources) {
-                    sb.appendLine("    - ${source.displayName}")
-                }
-            }
-            sb.appendLine()
-        }
-
-        sb.appendLine("Found $totalCount duplicate(s). To allow intentional overrides, add to allowlist:")
-        sb.appendLine("highlander {")
-        sb.appendLine("    configuration(\"${configurationName.get()}\") {")
-        sb.append("        allowlist += setOf(")
-        val keys = sections.flatMap { it.second }.map { "\"${it.resourceKey}\"" }
-        sb.append(keys.joinToString(", "))
-        sb.appendLine(")")
-        sb.appendLine("    }")
-        sb.appendLine("}")
-
-        return sb.toString()
+        return artifacts.artifacts.map { it.file to SourceOrigin.from(it.id.componentIdentifier) }
     }
 }

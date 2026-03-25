@@ -137,6 +137,17 @@ internal class AndroidProject(
         }
     }
 
+    fun readFile(relativePath: String): String? {
+        val file = dir.resolve(relativePath)
+        return if (file.exists()) file.readText() else null
+    }
+
+    fun addAppResource(path: String, content: String) {
+        val file = dir.resolve("app/src/main/res/$path")
+        file.parentFile.mkdirs()
+        file.writeText(content)
+    }
+
     override fun close() {
         dir.deleteRecursively()
     }
@@ -162,7 +173,6 @@ internal class AndroidProject(
                     resources = true
                     nativeLibs = false
                     assets = false
-                    severity = "fail"
                 }
             }
         """.trimIndent()

@@ -19,6 +19,8 @@ public class HighlanderPlugin : Plugin<Project> {
 
         internal const val HIGHLANDER_TASK_NAME = "highlander"
 
+        internal const val HIGHLANDER_BASELINE_TASK_NAME = "highlanderBaseline"
+
         internal val VERSION: String by lazy {
             HighlanderPlugin::class.java
                 .getResourceAsStream("/highlander.properties")
@@ -34,22 +36,26 @@ public class HighlanderPlugin : Plugin<Project> {
             target.objects
         )
 
-        val checkTask = target.tasks.register(HIGHLANDER_TASK_NAME) {
+        val guardTask = target.tasks.register(HIGHLANDER_TASK_NAME) {
             group = HIGHLANDER_TASK_GROUP
-            description = "Detect duplicate resources across dependencies"
+            description = "Check for new duplicate resources against baseline"
+        }
+        val baselineTask = target.tasks.register(HIGHLANDER_BASELINE_TASK_NAME) {
+            group = HIGHLANDER_TASK_GROUP
+            description = "Save current duplicate resources as baseline"
         }
 
         target.pluginManager.withPlugin("com.android.application") {
-            AndroidVariantHandler.configureVariants(target, extension, checkTask)
+            AndroidVariantHandler.configureVariants(target, extension, guardTask, baselineTask)
         }
 
-        attachToCheckTask(target, checkTask)
+        attachToCheckTask(target, guardTask)
     }
 
-    private fun attachToCheckTask(target: Project, checkTask: TaskProvider<*>) {
+    private fun attachToCheckTask(target: Project, guardTask: TaskProvider<*>) {
         target.pluginManager.withPlugin("base") {
             target.tasks.named(LifecycleBasePlugin.CHECK_TASK_NAME).configure {
-                this.dependsOn(checkTask)
+                this.dependsOn(guardTask)
             }
         }
     }

@@ -11,11 +11,6 @@ import org.gradle.api.artifacts.type.ArtifactTypeDefinition
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.tasks.TaskProvider
 
-/**
- * Isolated handler for AGP-specific configuration.
- * Separated from [HighlanderPlugin][io.github.fornewid.gradle.plugins.highlander.HighlanderPlugin]
- * to avoid classloader issues with GradleRunner TestKit.
- */
 internal object AndroidVariantHandler {
 
     private const val ARTIFACT_TYPE_RES = "android-res"
@@ -25,14 +20,15 @@ internal object AndroidVariantHandler {
     fun configureVariants(
         project: Project,
         extension: HighlanderPluginExtension,
-        checkTask: TaskProvider<*>,
+        guardTask: TaskProvider<*>,
+        baselineTask: TaskProvider<*>,
     ) {
         val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
 
         androidComponents.onVariants { variant ->
             extension.configurations.configureEach {
                 if (configurationName == variant.name) {
-                    registerCheckTask(project, this, variant, checkTask)
+                    registerTasks(project, extension.baselineDir.get(), this, variant, guardTask, baselineTask)
                 }
             }
         }
@@ -58,7 +54,8 @@ internal object AndroidVariantHandler {
             }
         }
 
-        checkTask.configure { doFirst { validateConfigurations() } }
+        guardTask.configure { doFirst { validateConfigurations() } }
+        baselineTask.configure { doFirst { validateConfigurations() } }
     }
 
     @Suppress("DEPRECATION")
@@ -66,21 +63,23 @@ internal object AndroidVariantHandler {
         return if (isEmpty()) "" else get(0).toUpperCase() + substring(1)
     }
 
-    private fun registerCheckTask(
+    private fun registerTasks(
         project: Project,
+        baselineDirName: String,
         config: HighlanderConfiguration,
         variant: Variant,
-        checkTask: TaskProvider<*>,
+        guardTask: TaskProvider<*>,
+        baselineTask: TaskProvider<*>,
     ) {
         val capitalizedName = config.configurationName.capitalize()
         val runtimeClasspath = project.configurations.getByName(
             "${config.configurationName}RuntimeClasspath"
         )
-
         val artifactTypeAttr = Attribute.of(
             ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE.name,
             String::class.java
         )
+        val baselineDirectory = project.file(baselineDirName)
 
         val resArtifacts = if (config.resources) {
             runtimeClasspath.incoming.artifactView {
@@ -103,54 +102,46 @@ internal object AndroidVariantHandler {
             }.artifacts
         } else null
 
-        // Collect the current project's own source directories
-        val localResDirs = if (config.resources) {
-            variant.sources.res?.all
-        } else null
+        val localResDirs = if (config.resources) variant.sources.res?.all else null
+        val localAssetDirs = if (config.assets) variant.sources.assets?.all else null
+        val localJniLibDirs = if (config.nativeLibs) variant.sources.jniLibs?.all else null
 
-        val localAssetDirs = if (config.assets) {
-            variant.sources.assets?.all
-        } else null
-
-        val localJniLibDirs = if (config.nativeLibs) {
-            variant.sources.jniLibs?.all
-        } else null
-
-        val perVariantTask = project.tasks.register(
-            "highlander$capitalizedName",
-            HighlanderCheckTask::class.java
-        ) {
-            configurationName.set(config.configurationName)
-            projectPath.set(project.path)
-            severity.set(config.severity)
-            scanResources.set(config.resources)
-            scanNativeLibs.set(config.nativeLibs)
-            scanAssets.set(config.assets)
-            allowlist.set(config.allowlist)
+        fun configureTask(task: HighlanderCheckTask, isBaseline: Boolean) {
+            task.configurationName.set(config.configurationName)
+            task.projectPath.set(project.path)
+            task.shouldBaseline.set(isBaseline)
+            task.scanResources.set(config.resources)
+            task.scanNativeLibs.set(config.nativeLibs)
+            task.scanAssets.set(config.assets)
+            task.baselineDir.set(baselineDirectory)
 
             if (resArtifacts != null) {
-                resourceFiles.set(resArtifacts.artifactFiles)
-                this.resArtifacts = resArtifacts
+                task.resourceFiles.set(resArtifacts.artifactFiles)
+                task.resArtifacts = resArtifacts
             }
-            if (localResDirs != null) {
-                localResourceDirs.set(localResDirs)
-            }
+            if (localResDirs != null) task.localResourceDirs.set(localResDirs)
             if (jniArtifacts != null) {
-                nativeLibFiles.set(jniArtifacts.artifactFiles)
-                this.jniArtifacts = jniArtifacts
+                task.nativeLibFiles.set(jniArtifacts.artifactFiles)
+                task.jniArtifacts = jniArtifacts
             }
-            if (localJniLibDirs != null) {
-                localNativeLibDirs.set(localJniLibDirs)
-            }
+            if (localJniLibDirs != null) task.localNativeLibDirs.set(localJniLibDirs)
             if (assetArtifacts != null) {
-                assetFiles.set(assetArtifacts.artifactFiles)
-                this.assetArtifactCollection = assetArtifacts
+                task.assetFiles.set(assetArtifacts.artifactFiles)
+                task.assetArtifactCollection = assetArtifacts
             }
-            if (localAssetDirs != null) {
-                localAssetSourceDirs.set(localAssetDirs)
-            }
+            if (localAssetDirs != null) task.localAssetSourceDirs.set(localAssetDirs)
         }
 
-        checkTask.configure { dependsOn(perVariantTask) }
+        val perConfigGuardTask = project.tasks.register(
+            "highlander$capitalizedName",
+            HighlanderCheckTask::class.java
+        ) { configureTask(this, false) }
+        guardTask.configure { dependsOn(perConfigGuardTask) }
+
+        val perConfigBaselineTask = project.tasks.register(
+            "highlanderBaseline$capitalizedName",
+            HighlanderCheckTask::class.java
+        ) { configureTask(this, true) }
+        baselineTask.configure { dependsOn(perConfigBaselineTask) }
     }
 }

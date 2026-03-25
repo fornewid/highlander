@@ -9,75 +9,61 @@ import org.junit.jupiter.api.Test
 internal class HighlanderPluginTest {
 
     @Test
-    fun `passes when no duplicate resources exist`() {
+    fun `baseline task creates baseline file`() {
+        AndroidProject(
+            appResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
+            moduleResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
+        ).use { project ->
+            val result = build(project, ":app:highlanderBaselineRelease")
+            assertThat(result.output).contains("Highlander baseline created")
+
+            val baseline = project.readFile("app/highlander/release-resources.txt")
+            assertThat(baseline).isNotNull()
+            assertThat(baseline).contains("drawable/ic_shared")
+            assertThat(baseline).contains(":app")
+            assertThat(baseline).contains(":module1")
+        }
+    }
+
+    @Test
+    fun `guard task passes when baseline matches`() {
+        AndroidProject(
+            appResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
+            moduleResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+            val result = build(project, ":app:highlanderRelease")
+            assertThat(result.output).contains("No changes")
+        }
+    }
+
+    @Test
+    fun `guard task fails when new duplicate appears`() {
         AndroidProject(
             appResources = mapOf("drawable/ic_app.xml" to "<vector/>"),
             moduleResources = mapOf("drawable/ic_module.xml" to "<vector/>"),
         ).use { project ->
-            val result = build(project, ":app:highlanderRelease")
-            assertThat(result.output).contains("No duplicates found")
-        }
-    }
+            // Baseline: no duplicates
+            build(project, ":app:highlanderBaselineRelease")
 
-    @Test
-    fun `fails when duplicate resources detected with severity fail`() {
-        AndroidProject(
-            appResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
-            moduleResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
-        ).use { project ->
+            // Add duplicate
+            project.addAppResource("drawable/ic_module.xml", "<vector/>")
+
             val result = buildAndFail(project, ":app:highlanderRelease")
-            assertThat(result.output).contains("Duplicate Resources")
-            assertThat(result.output).contains("drawable/ic_shared")
-            assertThat(result.output).contains(":app")
-            assertThat(result.output).contains(":module1")
+            assertThat(result.output).contains("Duplicates changed")
+            assertThat(result.output).contains("+ drawable/ic_module")
+            assertThat(result.output).contains("highlanderBaselineRelease")
         }
     }
 
     @Test
-    fun `warns when duplicate resources detected with severity warn`() {
-        val pluginConfig = """
-            highlander {
-                configuration("release") {
-                    resources = true
-                    nativeLibs = false
-                    assets = false
-                    severity = "warn"
-                }
-            }
-        """.trimIndent()
-
+    fun `guard task creates baseline on first run when no baseline exists`() {
         AndroidProject(
-            pluginConfig = pluginConfig,
             appResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
             moduleResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
         ).use { project ->
             val result = build(project, ":app:highlanderRelease")
-            assertThat(result.output).contains("Duplicate Resources")
-            assertThat(result.output).contains("drawable/ic_shared")
-        }
-    }
-
-    @Test
-    fun `allowlist excludes specified resources`() {
-        val pluginConfig = """
-            highlander {
-                configuration("release") {
-                    resources = true
-                    nativeLibs = false
-                    assets = false
-                    severity = "fail"
-                    allowlist = ["drawable/ic_shared"]
-                }
-            }
-        """.trimIndent()
-
-        AndroidProject(
-            pluginConfig = pluginConfig,
-            appResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
-            moduleResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
-        ).use { project ->
-            val result = build(project, ":app:highlanderRelease")
-            assertThat(result.output).contains("No duplicates found")
+            assertThat(result.output).contains("Highlander baseline created")
         }
     }
 
@@ -96,6 +82,35 @@ internal class HighlanderPluginTest {
             assertThat(result.output).contains("could not resolve configuration \"nonExistent\"")
             assertThat(result.output).contains("configuration(\"release\")")
             assertThat(result.output).contains("configuration(\"debug\")")
+        }
+    }
+
+    @Test
+    fun `no baseline file created when no duplicates and scan type disabled`() {
+        val pluginConfig = """
+            highlander {
+                configuration("release") {
+                    resources = true
+                    nativeLibs = false
+                    assets = false
+                }
+            }
+        """.trimIndent()
+
+        AndroidProject(
+            pluginConfig = pluginConfig,
+            appResources = mapOf("drawable/ic_app.xml" to "<vector/>"),
+            moduleResources = mapOf("drawable/ic_module.xml" to "<vector/>"),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+
+            // resources baseline should exist (empty = no duplicates)
+            val resBaseline = project.readFile("app/highlander/release-resources.txt")
+            assertThat(resBaseline).isNotNull()
+
+            // native-libs baseline should NOT exist (scan disabled)
+            val jniBaseline = project.readFile("app/highlander/release-native-libs.txt")
+            assertThat(jniBaseline).isNull()
         }
     }
 }

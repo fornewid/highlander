@@ -2,6 +2,7 @@ package io.github.fornewid.gradle.plugins.highlander
 
 import org.gradle.api.Action
 import org.gradle.api.model.ObjectFactory
+import org.gradle.api.provider.Property
 import javax.inject.Inject
 
 /**
@@ -13,7 +14,6 @@ import javax.inject.Inject
  *     resources = true
  *     nativeLibs = true
  *     assets = true
- *     severity = "fail"
  *   }
  * }
  * ```
@@ -21,6 +21,9 @@ import javax.inject.Inject
 public open class HighlanderPluginExtension @Inject constructor(
     private val objects: ObjectFactory
 ) {
+    /** Directory name for baseline files (default: "highlander") */
+    public val baselineDir: Property<String> = objects.property(String::class.java).convention("highlander")
+
     internal val configurations = objects.domainObjectContainer(HighlanderConfiguration::class.java)
 
     public fun configuration(name: String) {

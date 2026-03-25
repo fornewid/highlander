@@ -1,0 +1,3 @@
+config.json:
+  - :sample:app
+  - :sample:module1
