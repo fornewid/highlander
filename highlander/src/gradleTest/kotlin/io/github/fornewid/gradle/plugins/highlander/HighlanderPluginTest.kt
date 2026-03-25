@@ -17,7 +17,7 @@ internal class HighlanderPluginTest {
             val result = build(project, ":app:highlanderBaselineRelease")
             assertThat(result.output).contains("Highlander baseline created")
 
-            val baseline = project.readFile("app/highlander/release-resources.txt")
+            val baseline = project.readFile("app/highlander/releaseResources.txt")
             assertThat(baseline).isNotNull()
             assertThat(baseline).contains("drawable/ic_shared")
             assertThat(baseline).contains(":app")
@@ -105,11 +105,11 @@ internal class HighlanderPluginTest {
             build(project, ":app:highlanderBaselineRelease")
 
             // resources baseline should exist (empty = no duplicates)
-            val resBaseline = project.readFile("app/highlander/release-resources.txt")
+            val resBaseline = project.readFile("app/highlander/releaseResources.txt")
             assertThat(resBaseline).isNotNull()
 
             // native-libs baseline should NOT exist (scan disabled)
-            val jniBaseline = project.readFile("app/highlander/release-native-libs.txt")
+            val jniBaseline = project.readFile("app/highlander/releaseNativeLibs.txt")
             assertThat(jniBaseline).isNull()
         }
     }

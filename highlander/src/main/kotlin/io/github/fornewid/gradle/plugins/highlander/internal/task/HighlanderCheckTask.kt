@@ -69,7 +69,7 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         if (scanResources.get()) {
             val result = processBaseline(
                 label = "resources",
-                file = File(dir, "$variantName-resources.txt"),
+                file = File(dir, "${variantName}Resources.txt"),
                 current = scanRes(),
                 isBaseline = isBaseline,
             )
@@ -79,7 +79,7 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         if (scanNativeLibs.get()) {
             val result = processBaseline(
                 label = "native-libs",
-                file = File(dir, "$variantName-native-libs.txt"),
+                file = File(dir, "${variantName}NativeLibs.txt"),
                 current = scanJni(),
                 isBaseline = isBaseline,
             )
@@ -89,7 +89,7 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         if (scanAssets.get()) {
             val result = processBaseline(
                 label = "assets",
-                file = File(dir, "$variantName-assets.txt"),
+                file = File(dir, "${variantName}Assets.txt"),
                 current = scanAssets(),
                 isBaseline = isBaseline,
             )
