@@ -53,6 +53,22 @@ internal class BaselineFormatTest {
     }
 
     @Test
+    fun `Unknown source origin roundtrips correctly`() {
+        val entries = listOf(
+            DuplicateEntry("drawable/ic_close", listOf(
+                SourceOrigin.Module(":app"),
+                SourceOrigin.Unknown("fake-sdk.aar"),
+            )),
+        )
+
+        val serialized = BaselineFormat.serialize(entries)
+        val parsed = BaselineFormat.parse(serialized)
+
+        assertThat(parsed).isEqualTo(entries)
+        assertThat(parsed[0].sources[1]).isInstanceOf(SourceOrigin.Unknown::class.java)
+    }
+
+    @Test
     fun `parse empty string returns empty list`() {
         assertThat(BaselineFormat.parse("")).isEmpty()
         assertThat(BaselineFormat.parse("  \n  ")).isEmpty()

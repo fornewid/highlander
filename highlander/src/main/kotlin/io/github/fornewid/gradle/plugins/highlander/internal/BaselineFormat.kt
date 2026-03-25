@@ -70,10 +70,10 @@ internal object BaselineFormat {
     }
 
     private fun parseSourceOrigin(name: String): SourceOrigin {
-        return if (name.startsWith(":")) {
-            SourceOrigin.Module(name)
-        } else {
-            SourceOrigin.ExternalDependency(name)
+        return when {
+            name.startsWith(":") -> SourceOrigin.Module(name)
+            name.contains(":") -> SourceOrigin.ExternalDependency(name)
+            else -> SourceOrigin.Unknown(name)
         }
     }
 }
