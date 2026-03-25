@@ -67,10 +67,22 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
     @get:Optional
     abstract val nativeLibFiles: Property<FileCollection>
 
+    /** Local project jniLibs directories from variant.sources.jniLibs */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    @get:Optional
+    abstract val localNativeLibDirs: ListProperty<Collection<Directory>>
+
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
     @get:Optional
     abstract val assetFiles: Property<FileCollection>
+
+    /** Local project asset directories from variant.sources.assets */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    @get:Optional
+    abstract val localAssetSourceDirs: ListProperty<Collection<Directory>>
 
     @get:Internal
     var resArtifacts: ArtifactCollection? = null
@@ -110,7 +122,18 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         }
 
         if (scanNativeLibs.get()) {
-            val sources = resolveArtifactSources(jniArtifacts)
+            val sources = mutableListOf<Pair<File, SourceOrigin>>()
+            sources.addAll(resolveArtifactSources(jniArtifacts))
+
+            if (localNativeLibDirs.isPresent) {
+                val localOrigin = SourceOrigin.Module(projectPath.get())
+                for (dirCollection in localNativeLibDirs.get()) {
+                    for (dir in dirCollection) {
+                        sources.add(dir.asFile to localOrigin)
+                    }
+                }
+            }
+
             val duplicates = NativeLibScanner.scan(sources)
                 .filter { it.resourceKey !in allowedKeys }
             if (duplicates.isNotEmpty()) {
@@ -119,7 +142,18 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         }
 
         if (scanAssets.get()) {
-            val sources = resolveArtifactSources(assetArtifactCollection)
+            val sources = mutableListOf<Pair<File, SourceOrigin>>()
+            sources.addAll(resolveArtifactSources(assetArtifactCollection))
+
+            if (localAssetSourceDirs.isPresent) {
+                val localOrigin = SourceOrigin.Module(projectPath.get())
+                for (dirCollection in localAssetSourceDirs.get()) {
+                    for (dir in dirCollection) {
+                        sources.add(dir.asFile to localOrigin)
+                    }
+                }
+            }
+
             val duplicates = AssetScanner.scan(sources)
                 .filter { it.resourceKey !in allowedKeys }
             if (duplicates.isNotEmpty()) {

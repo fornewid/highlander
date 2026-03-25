@@ -103,9 +103,17 @@ internal object AndroidVariantHandler {
             }.artifacts
         } else null
 
-        // Collect the current project's own resource directories
+        // Collect the current project's own source directories
         val localResDirs = if (config.resources) {
             variant.sources.res?.all
+        } else null
+
+        val localAssetDirs = if (config.assets) {
+            variant.sources.assets?.all
+        } else null
+
+        val localJniLibDirs = if (config.nativeLibs) {
+            variant.sources.jniLibs?.all
         } else null
 
         val perVariantTask = project.tasks.register(
@@ -131,9 +139,15 @@ internal object AndroidVariantHandler {
                 nativeLibFiles.set(jniArtifacts.artifactFiles)
                 this.jniArtifacts = jniArtifacts
             }
+            if (localJniLibDirs != null) {
+                localNativeLibDirs.set(localJniLibDirs)
+            }
             if (assetArtifacts != null) {
                 assetFiles.set(assetArtifacts.artifactFiles)
                 this.assetArtifactCollection = assetArtifacts
+            }
+            if (localAssetDirs != null) {
+                localAssetSourceDirs.set(localAssetDirs)
             }
         }
 
