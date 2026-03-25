@@ -4,9 +4,11 @@ import com.android.build.api.variant.AndroidComponentsExtension
 import com.android.build.api.variant.Variant
 import io.github.fornewid.gradle.plugins.highlander.HighlanderConfiguration
 import io.github.fornewid.gradle.plugins.highlander.HighlanderPluginExtension
+import io.github.fornewid.gradle.plugins.highlander.internal.models.SourceOrigin
 import io.github.fornewid.gradle.plugins.highlander.internal.task.HighlanderCheckTask
 import org.gradle.api.GradleException
 import org.gradle.api.Project
+import org.gradle.api.artifacts.ArtifactCollection
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.tasks.TaskProvider
@@ -117,19 +119,26 @@ internal object AndroidVariantHandler {
             task.scanAssets.set(config.assets)
             task.baselineDir.set(baselineDirectory)
 
+            // Configuration-cache-safe: convert ArtifactCollection to serializable map
             if (resArtifacts != null) {
                 task.resourceFiles.set(resArtifacts.artifactFiles)
-                task.resArtifacts = resArtifacts
+                task.resArtifactMapping.set(
+                    project.provider { toArtifactMapping(resArtifacts) }
+                )
             }
             if (localResDirs != null) task.localResourceDirs.set(localResDirs)
             if (jniArtifacts != null) {
                 task.nativeLibFiles.set(jniArtifacts.artifactFiles)
-                task.jniArtifacts = jniArtifacts
+                task.jniArtifactMapping.set(
+                    project.provider { toArtifactMapping(jniArtifacts) }
+                )
             }
             if (localJniLibDirs != null) task.localNativeLibDirs.set(localJniLibDirs)
             if (assetArtifacts != null) {
                 task.assetFiles.set(assetArtifacts.artifactFiles)
-                task.assetArtifactCollection = assetArtifacts
+                task.assetArtifactMapping.set(
+                    project.provider { toArtifactMapping(assetArtifacts) }
+                )
             }
             if (localAssetDirs != null) task.localAssetSourceDirs.set(localAssetDirs)
         }
@@ -145,5 +154,11 @@ internal object AndroidVariantHandler {
             HighlanderCheckTask::class.java
         ) { configureTask(this, true) }
         baselineTask.configure { dependsOn(perConfigBaselineTask) }
+    }
+
+    private fun toArtifactMapping(artifacts: ArtifactCollection): Map<String, String> {
+        return artifacts.artifacts.associate { artifact ->
+            artifact.file.absolutePath to SourceOrigin.from(artifact.id.componentIdentifier).displayName
+        }
     }
 }

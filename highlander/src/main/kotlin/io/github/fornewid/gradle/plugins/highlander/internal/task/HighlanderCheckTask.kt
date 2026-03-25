@@ -10,11 +10,11 @@ import io.github.fornewid.gradle.plugins.highlander.internal.scanner.ResourceSca
 import io.github.fornewid.gradle.plugins.highlander.internal.scanner.ValuesResourceScanner
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
-import org.gradle.api.artifacts.ArtifactCollection
 import org.gradle.api.file.Directory
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.FileCollection
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
@@ -45,7 +45,6 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
 
     // @InputFiles ensures Gradle infers task dependencies (e.g., generateResValues).
     // @Optional allows scan types to be selectively disabled.
-    // doNotTrackState() disables up-to-date checks but dependency inference still works.
     @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val resourceFiles: Property<FileCollection>
     @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -59,9 +58,14 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
     @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val localAssetSourceDirs: ListProperty<Collection<Directory>>
 
-    @get:Internal var resArtifacts: ArtifactCollection? = null
-    @get:Internal var jniArtifacts: ArtifactCollection? = null
-    @get:Internal var assetArtifactCollection: ArtifactCollection? = null
+    // Configuration-cache-safe: serializable maps instead of ArtifactCollection.
+    // Key: file absolute path, Value: SourceOrigin display name
+    @get:Input @get:Optional
+    abstract val resArtifactMapping: MapProperty<String, String>
+    @get:Input @get:Optional
+    abstract val jniArtifactMapping: MapProperty<String, String>
+    @get:Input @get:Optional
+    abstract val assetArtifactMapping: MapProperty<String, String>
 
     @TaskAction
     fun execute() {
@@ -177,28 +181,28 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
 
     private fun scanRes(): List<DuplicateEntry> {
         val sources = mutableListOf<Pair<File, SourceOrigin>>()
-        sources.addAll(resolveArtifactSources(resArtifacts))
+        sources.addAll(resolveFromMapping(resArtifactMapping))
         addLocalDirs(sources, localResourceDirs)
         return ResourceScanner.scan(sources)
     }
 
     private fun scanValues(): List<DuplicateEntry> {
         val sources = mutableListOf<Pair<File, SourceOrigin>>()
-        sources.addAll(resolveArtifactSources(resArtifacts))
+        sources.addAll(resolveFromMapping(resArtifactMapping))
         addLocalDirs(sources, localResourceDirs)
         return ValuesResourceScanner.scan(sources)
     }
 
     private fun scanJni(): List<DuplicateEntry> {
         val sources = mutableListOf<Pair<File, SourceOrigin>>()
-        sources.addAll(resolveArtifactSources(jniArtifacts))
+        sources.addAll(resolveFromMapping(jniArtifactMapping))
         addLocalDirs(sources, localNativeLibDirs)
         return NativeLibScanner.scan(sources)
     }
 
     private fun scanAssets(): List<DuplicateEntry> {
         val sources = mutableListOf<Pair<File, SourceOrigin>>()
-        sources.addAll(resolveArtifactSources(assetArtifactCollection))
+        sources.addAll(resolveFromMapping(assetArtifactMapping))
         addLocalDirs(sources, localAssetSourceDirs)
         return AssetScanner.scan(sources)
     }
@@ -216,8 +220,18 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         }
     }
 
-    private fun resolveArtifactSources(artifacts: ArtifactCollection?): List<Pair<File, SourceOrigin>> {
-        if (artifacts == null) return emptyList()
-        return artifacts.artifacts.map { it.file to SourceOrigin.from(it.id.componentIdentifier) }
+    private fun resolveFromMapping(mapping: MapProperty<String, String>): List<Pair<File, SourceOrigin>> {
+        if (!mapping.isPresent) return emptyList()
+        return mapping.get().map { (path, displayName) ->
+            File(path) to parseSourceOrigin(displayName)
+        }
+    }
+
+    private fun parseSourceOrigin(displayName: String): SourceOrigin {
+        return when {
+            displayName.startsWith(":") -> SourceOrigin.Module(displayName)
+            displayName.contains(":") -> SourceOrigin.ExternalDependency(displayName)
+            else -> SourceOrigin.Unknown(displayName)
+        }
     }
 }
