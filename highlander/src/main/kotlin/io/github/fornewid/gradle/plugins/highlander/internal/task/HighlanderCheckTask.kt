@@ -168,7 +168,10 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         return buildString {
             appendLine("=== $label ===")
             for (entry in removed) {
-                appendLine("- ${entry.resourceKey}")
+                appendLine("- ${entry.resourceKey}:")
+                for (source in entry.sources) {
+                    appendLine("-   - ${source.displayName}")
+                }
             }
             for (entry in added) {
                 appendLine("+ ${entry.resourceKey}:")

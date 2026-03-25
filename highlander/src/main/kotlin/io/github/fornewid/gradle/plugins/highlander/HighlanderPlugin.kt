@@ -9,16 +9,15 @@ import java.util.Properties
 
 /**
  * A Gradle plugin that detects duplicate resources across Android dependencies.
+ *
+ * Requires Android Gradle Plugin 8.0.0 or higher.
  */
 public class HighlanderPlugin : Plugin<Project> {
 
     internal companion object {
         internal const val HIGHLANDER_TASK_GROUP = "Highlander"
-
         internal const val HIGHLANDER_EXTENSION_NAME = "highlander"
-
         internal const val HIGHLANDER_TASK_NAME = "highlander"
-
         internal const val HIGHLANDER_BASELINE_TASK_NAME = "highlanderBaseline"
 
         internal val VERSION: String by lazy {

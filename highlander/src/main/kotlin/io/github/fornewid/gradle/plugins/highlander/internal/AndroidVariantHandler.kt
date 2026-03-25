@@ -26,6 +26,7 @@ internal object AndroidVariantHandler {
         baselineTask: TaskProvider<*>,
     ) {
         val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
+        verifyAgpVersion(androidComponents)
 
         androidComponents.onVariants { variant ->
             extension.configurations.configureEach {
@@ -58,6 +59,16 @@ internal object AndroidVariantHandler {
 
         guardTask.configure { doFirst { validateConfigurations() } }
         baselineTask.configure { doFirst { validateConfigurations() } }
+    }
+
+    private fun verifyAgpVersion(androidComponents: AndroidComponentsExtension<*, *, *>) {
+        val agpVersion = androidComponents.pluginVersion
+        val minVersion = com.android.build.api.AndroidPluginVersion(8, 0, 0)
+        if (agpVersion < minVersion) {
+            throw GradleException(
+                "Highlander requires Android Gradle Plugin 8.0.0 or higher. Found: $agpVersion"
+            )
+        }
     }
 
     @Suppress("DEPRECATION")
