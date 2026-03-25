@@ -69,6 +69,29 @@ internal class BaselineFormatTest {
     }
 
     @Test
+    fun `extensions are serialized and parsed correctly`() {
+        val entries = listOf(
+            DuplicateEntry(
+                "drawable/ic_close",
+                listOf(
+                    SourceOrigin.Module(":app"),
+                    SourceOrigin.ExternalDependency("com.example:lib:1.0"),
+                ),
+                mapOf(":app" to ".xml", "com.example:lib:1.0" to ".png"),
+            ),
+        )
+
+        val serialized = BaselineFormat.serialize(entries)
+        assertThat(serialized).contains(":app (.xml)")
+        assertThat(serialized).contains("com.example:lib:1.0 (.png)")
+
+        val parsed = BaselineFormat.parse(serialized)
+        assertThat(parsed).hasSize(1)
+        assertThat(parsed[0].extensions[":app"]).isEqualTo(".xml")
+        assertThat(parsed[0].extensions["com.example:lib:1.0"]).isEqualTo(".png")
+    }
+
+    @Test
     fun `parse empty string returns empty list`() {
         assertThat(BaselineFormat.parse("")).isEmpty()
         assertThat(BaselineFormat.parse("  \n  ")).isEmpty()

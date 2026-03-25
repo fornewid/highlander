@@ -10,16 +10,13 @@ import io.github.fornewid.gradle.plugins.highlander.internal.models.SourceOrigin
  * ```
  * # override
  * drawable/ic_close:
- *   - :app
- *   - com.example:lib:1.0
- *
- * # conflict
- * drawable/sdk_icon:
- *   - com.a:lib:1.0
- *   - com.b:lib:2.0
+ *   - :app (.xml)
+ *   - com.example:lib:1.0 (.png)
  * ```
  */
 internal object BaselineFormat {
+
+    private val SOURCE_WITH_EXT = Regex("""^(.+?)\s+\((\.\w+)\)$""")
 
     fun serialize(entries: List<DuplicateEntry>, appModulePath: String? = null): String {
         if (entries.isEmpty()) return ""
@@ -31,7 +28,12 @@ internal object BaselineFormat {
             }
             sb.appendLine("${entry.resourceKey}:")
             for (source in entry.sources) {
-                sb.appendLine("  - ${source.displayName}")
+                val ext = entry.extensions[source.displayName]
+                if (ext != null) {
+                    sb.appendLine("  - ${source.displayName} ($ext)")
+                } else {
+                    sb.appendLine("  - ${source.displayName}")
+                }
             }
         }
         return sb.toString()
@@ -43,23 +45,34 @@ internal object BaselineFormat {
         val entries = mutableListOf<DuplicateEntry>()
         var currentKey: String? = null
         var currentSources = mutableListOf<SourceOrigin>()
+        var currentExtensions = mutableMapOf<String, String>()
 
         for (rawLine in content.lines()) {
             val line = rawLine.trimEnd()
             when {
                 line.isBlank() || line.startsWith("#") -> continue
                 line.endsWith(":") && !line.startsWith("  ") -> {
-                    flushEntry(entries, currentKey, currentSources)
+                    flushEntry(entries, currentKey, currentSources, currentExtensions)
                     currentKey = line.removeSuffix(":")
                     currentSources = mutableListOf()
+                    currentExtensions = mutableMapOf()
                 }
                 line.startsWith("  - ") -> {
-                    val name = line.removePrefix("  - ")
-                    currentSources.add(parseSourceOrigin(name))
+                    val raw = line.removePrefix("  - ")
+                    val match = SOURCE_WITH_EXT.matchEntire(raw)
+                    if (match != null) {
+                        val name = match.groupValues[1]
+                        val ext = match.groupValues[2]
+                        val origin = parseSourceOrigin(name)
+                        currentSources.add(origin)
+                        currentExtensions[name] = ext
+                    } else {
+                        currentSources.add(parseSourceOrigin(raw))
+                    }
                 }
             }
         }
-        flushEntry(entries, currentKey, currentSources)
+        flushEntry(entries, currentKey, currentSources, currentExtensions)
 
         return entries
     }
@@ -68,9 +81,10 @@ internal object BaselineFormat {
         entries: MutableList<DuplicateEntry>,
         key: String?,
         sources: List<SourceOrigin>,
+        extensions: Map<String, String>,
     ) {
         if (key != null && sources.isNotEmpty()) {
-            entries.add(DuplicateEntry(key, sources))
+            entries.add(DuplicateEntry(key, sources, extensions))
         }
     }
 

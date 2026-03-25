@@ -1,6 +1,6 @@
 # override
 drawable/ic_close:
-  - :sample:app
-  - :sample:module1
-  - :sample:module2
-  - fake-sdk.aar
+  - :sample:app (.xml)
+  - :sample:module1 (.xml)
+  - :sample:module2 (.xml)
+  - fake-sdk.aar (.xml)

@@ -9,7 +9,8 @@ internal object ResourceScanner {
     fun scan(
         sources: List<Pair<File, SourceOrigin>>,
     ): List<DuplicateEntry> {
-        val resourceMap = mutableMapOf<String, MutableSet<SourceOrigin>>()
+        // key -> (source -> extension)
+        val resourceMap = mutableMapOf<String, MutableMap<SourceOrigin, String>>()
 
         for ((dir, source) in sources) {
             if (!dir.exists() || !dir.isDirectory) continue
@@ -18,31 +19,34 @@ internal object ResourceScanner {
 
         return resourceMap
             .filter { it.value.size > 1 }
-            .map { (key, origins) -> DuplicateEntry(key, origins.sorted()) }
+            .map { (key, sourceExtMap) ->
+                DuplicateEntry(
+                    resourceKey = key,
+                    sources = sourceExtMap.keys.sorted(),
+                    extensions = sourceExtMap.mapKeys { it.key.displayName },
+                )
+            }
             .sorted()
     }
 
     private fun collectResources(
         resDir: File,
         source: SourceOrigin,
-        resourceMap: MutableMap<String, MutableSet<SourceOrigin>>,
+        resourceMap: MutableMap<String, MutableMap<SourceOrigin, String>>,
     ) {
         val typeDirs = resDir.listFiles()?.filter { it.isDirectory } ?: return
 
         for (typeDir in typeDirs) {
             val dirName = typeDir.name
-            // Skip values directories (XML parsing needed, opt-in in future)
             if (dirName.startsWith("values")) continue
 
             val files = typeDir.listFiles()?.filter { it.isFile } ?: continue
             for (file in files) {
-                // Resource key: "type-qualifier/name" (without extension)
-                // e.g., "drawable-hdpi/ic_launcher", "layout/activity_main"
-                // For 9-patch images: "icon.9.png" -> resource name is "icon", not "icon.9"
                 val baseName = file.nameWithoutExtension
                 val resourceName = if (file.extension == "png") baseName.removeSuffix(".9") else baseName
                 val key = "$dirName/$resourceName"
-                resourceMap.getOrPut(key) { mutableSetOf() }.add(source)
+                val ext = ".${file.extension}"
+                resourceMap.getOrPut(key) { mutableMapOf() }.putIfAbsent(source, ext)
             }
         }
     }
