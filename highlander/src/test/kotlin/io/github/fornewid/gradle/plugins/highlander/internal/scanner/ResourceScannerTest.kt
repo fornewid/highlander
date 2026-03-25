@@ -101,6 +101,42 @@ internal class ResourceScannerTest {
     }
 
     @Test
+    fun `9-patch files use base name without 9 suffix`() {
+        val moduleA = createResDir("moduleA", mapOf(
+            "drawable/icon.9.png" to "binary",
+        ))
+        val moduleB = createResDir("moduleB", mapOf(
+            "drawable/icon.png" to "binary",
+        ))
+
+        val duplicates = ResourceScanner.scan(listOf(
+            moduleA to SourceOrigin.Module(":a"),
+            moduleB to SourceOrigin.Module(":b"),
+        ))
+
+        assertThat(duplicates).hasSize(1)
+        assertThat(duplicates[0].resourceKey).isEqualTo("drawable/icon")
+    }
+
+    @Test
+    fun `detects cross-extension duplicates (png vs xml)`() {
+        val moduleA = createResDir("moduleA", mapOf(
+            "drawable/ic_close.png" to "binary",
+        ))
+        val moduleB = createResDir("moduleB", mapOf(
+            "drawable/ic_close.xml" to "<vector/>",
+        ))
+
+        val duplicates = ResourceScanner.scan(listOf(
+            moduleA to SourceOrigin.Module(":a"),
+            moduleB to SourceOrigin.Module(":b"),
+        ))
+
+        assertThat(duplicates).hasSize(1)
+        assertThat(duplicates[0].resourceKey).isEqualTo("drawable/ic_close")
+    }
+
+    @Test
     fun `handles non-existent directories gracefully`() {
         val nonExistent = File(tempDir, "does-not-exist")
 

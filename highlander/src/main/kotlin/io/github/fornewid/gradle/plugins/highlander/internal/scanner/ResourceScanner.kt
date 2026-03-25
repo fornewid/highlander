@@ -38,7 +38,10 @@ internal object ResourceScanner {
             for (file in files) {
                 // Resource key: "type-qualifier/name" (without extension)
                 // e.g., "drawable-hdpi/ic_launcher", "layout/activity_main"
-                val key = "$dirName/${file.nameWithoutExtension}"
+                // For 9-patch images: "icon.9.png" -> resource name is "icon", not "icon.9"
+                val baseName = file.nameWithoutExtension
+                val resourceName = if (file.extension == "png") baseName.removeSuffix(".9") else baseName
+                val key = "$dirName/$resourceName"
                 resourceMap.getOrPut(key) { mutableSetOf() }.add(source)
             }
         }
