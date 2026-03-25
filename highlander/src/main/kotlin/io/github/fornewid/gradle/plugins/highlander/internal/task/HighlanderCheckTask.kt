@@ -7,6 +7,7 @@ import io.github.fornewid.gradle.plugins.highlander.internal.models.SourceOrigin
 import io.github.fornewid.gradle.plugins.highlander.internal.scanner.AssetScanner
 import io.github.fornewid.gradle.plugins.highlander.internal.scanner.NativeLibScanner
 import io.github.fornewid.gradle.plugins.highlander.internal.scanner.ResourceScanner
+import io.github.fornewid.gradle.plugins.highlander.internal.scanner.ValuesResourceScanner
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.artifacts.ArtifactCollection
@@ -36,6 +37,7 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
     @get:Input abstract val projectPath: Property<String>
     @get:Input abstract val shouldBaseline: Property<Boolean>
     @get:Input abstract val scanResources: Property<Boolean>
+    @get:Input abstract val scanValuesResources: Property<Boolean>
     @get:Input abstract val scanNativeLibs: Property<Boolean>
     @get:Input abstract val scanAssets: Property<Boolean>
 
@@ -73,6 +75,16 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
                 label = "resources",
                 file = File(dir, "${variantName}Resources.txt"),
                 current = scanRes(),
+                isBaseline = isBaseline,
+            )
+            if (result != null) diffs.add(result)
+        }
+
+        if (scanValuesResources.get()) {
+            val result = processBaseline(
+                label = "values",
+                file = File(dir, "${variantName}Values.txt"),
+                current = scanValues(),
                 isBaseline = isBaseline,
             )
             if (result != null) diffs.add(result)
@@ -168,6 +180,13 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         sources.addAll(resolveArtifactSources(resArtifacts))
         addLocalDirs(sources, localResourceDirs)
         return ResourceScanner.scan(sources)
+    }
+
+    private fun scanValues(): List<DuplicateEntry> {
+        val sources = mutableListOf<Pair<File, SourceOrigin>>()
+        sources.addAll(resolveArtifactSources(resArtifacts))
+        addLocalDirs(sources, localResourceDirs)
+        return ValuesResourceScanner.scan(sources)
     }
 
     private fun scanJni(): List<DuplicateEntry> {

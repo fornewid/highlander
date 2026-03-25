@@ -15,6 +15,9 @@ public open class HighlanderConfiguration @Inject constructor(
     /** Scan for duplicate Android resources (res/) */
     public var resources: Boolean = true
 
+    /** Scan for duplicate values resources (strings, colors, etc.) */
+    public var valuesResources: Boolean = false
+
     /** Scan for duplicate native libraries (.so) */
     public var nativeLibs: Boolean = false
 

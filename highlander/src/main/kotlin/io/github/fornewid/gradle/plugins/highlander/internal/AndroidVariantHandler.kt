@@ -81,7 +81,8 @@ internal object AndroidVariantHandler {
         )
         val baselineDirectory = project.file(baselineDirName)
 
-        val resArtifacts = if (config.resources) {
+        val needsRes = config.resources || config.valuesResources
+        val resArtifacts = if (needsRes) {
             runtimeClasspath.incoming.artifactView {
                 attributes.attribute(artifactTypeAttr, ARTIFACT_TYPE_RES)
                 isLenient = true
@@ -102,7 +103,7 @@ internal object AndroidVariantHandler {
             }.artifacts
         } else null
 
-        val localResDirs = if (config.resources) variant.sources.res?.all else null
+        val localResDirs = if (needsRes) variant.sources.res?.all else null
         val localAssetDirs = if (config.assets) variant.sources.assets?.all else null
         val localJniLibDirs = if (config.nativeLibs) variant.sources.jniLibs?.all else null
 
@@ -111,6 +112,7 @@ internal object AndroidVariantHandler {
             task.projectPath.set(project.path)
             task.shouldBaseline.set(isBaseline)
             task.scanResources.set(config.resources)
+            task.scanValuesResources.set(config.valuesResources)
             task.scanNativeLibs.set(config.nativeLibs)
             task.scanAssets.set(config.assets)
             task.baselineDir.set(baselineDirectory)
