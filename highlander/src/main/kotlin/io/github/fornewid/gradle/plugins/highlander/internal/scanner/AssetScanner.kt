@@ -32,7 +32,7 @@ internal object AssetScanner {
 
         for (entry in entries) {
             if (entry.isFile) {
-                val key = entry.relativeTo(baseDir).path
+                val key = entry.relativeTo(baseDir).invariantSeparatorsPath
                 assetMap.getOrPut(key) { mutableSetOf() }.add(source)
             } else if (entry.isDirectory) {
                 collectAssets(baseDir, entry, source, assetMap)
