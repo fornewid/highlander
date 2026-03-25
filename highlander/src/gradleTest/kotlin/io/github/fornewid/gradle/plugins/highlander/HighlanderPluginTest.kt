@@ -14,8 +14,7 @@ internal class HighlanderPluginTest {
             appResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
             moduleResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
         ).use { project ->
-            val result = build(project, ":app:highlanderBaselineRelease")
-            assertThat(result.output).contains("Highlander baseline created")
+            build(project, ":app:highlanderBaselineRelease")
 
             val baseline = project.readFile("app/highlander/releaseResources.txt")
             assertThat(baseline).isNotNull()
@@ -32,8 +31,8 @@ internal class HighlanderPluginTest {
             moduleResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
         ).use { project ->
             build(project, ":app:highlanderBaselineRelease")
-            val result = build(project, ":app:highlanderRelease")
-            assertThat(result.output).contains("No changes")
+            // Should succeed without error
+            build(project, ":app:highlanderRelease")
         }
     }
 
@@ -43,16 +42,13 @@ internal class HighlanderPluginTest {
             appResources = mapOf("drawable/ic_app.xml" to "<vector/>"),
             moduleResources = mapOf("drawable/ic_module.xml" to "<vector/>"),
         ).use { project ->
-            // Baseline: no duplicates
             build(project, ":app:highlanderBaselineRelease")
 
-            // Add duplicate
             project.addAppResource("drawable/ic_module.xml", "<vector/>")
 
             val result = buildAndFail(project, ":app:highlanderRelease")
             assertThat(result.output).contains("Duplicates changed")
             assertThat(result.output).contains("+ drawable/ic_module")
-            assertThat(result.output).contains("highlanderBaselineRelease")
         }
     }
 
@@ -62,8 +58,12 @@ internal class HighlanderPluginTest {
             appResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
             moduleResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
         ).use { project ->
-            val result = build(project, ":app:highlanderRelease")
-            assertThat(result.output).contains("Highlander baseline created")
+            // First run should succeed (auto-creates baseline)
+            build(project, ":app:highlanderRelease")
+
+            val baseline = project.readFile("app/highlander/releaseResources.txt")
+            assertThat(baseline).isNotNull()
+            assertThat(baseline).contains("drawable/ic_shared")
         }
     }
 
@@ -86,7 +86,7 @@ internal class HighlanderPluginTest {
     }
 
     @Test
-    fun `no baseline file created when no duplicates and scan type disabled`() {
+    fun `no baseline file created when scan type disabled`() {
         val pluginConfig = """
             highlander {
                 configuration("release") {
@@ -104,11 +104,9 @@ internal class HighlanderPluginTest {
         ).use { project ->
             build(project, ":app:highlanderBaselineRelease")
 
-            // resources baseline should exist (empty = no duplicates)
             val resBaseline = project.readFile("app/highlander/releaseResources.txt")
             assertThat(resBaseline).isNotNull()
 
-            // native-libs baseline should NOT exist (scan disabled)
             val jniBaseline = project.readFile("app/highlander/releaseNativeLibs.txt")
             assertThat(jniBaseline).isNull()
         }

@@ -19,7 +19,6 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
-import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
@@ -29,6 +28,7 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
 
     init {
         group = HighlanderPlugin.HIGHLANDER_TASK_GROUP
+        // Always run: baseline comparison must happen every time
         doNotTrackState("Highlander always compares against baseline")
     }
 
@@ -41,18 +41,20 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
 
     @get:Internal abstract val baselineDir: DirectoryProperty
 
-    // --- Dependency inputs ---
-    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
+    // @InputFiles ensures Gradle infers task dependencies (e.g., generateResValues).
+    // @Optional allows scan types to be selectively disabled.
+    // doNotTrackState() disables up-to-date checks but dependency inference still works.
+    @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val resourceFiles: Property<FileCollection>
-    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
+    @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val localResourceDirs: ListProperty<Collection<Directory>>
-    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
+    @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val nativeLibFiles: Property<FileCollection>
-    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
+    @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val localNativeLibDirs: ListProperty<Collection<Directory>>
-    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
+    @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val assetFiles: Property<FileCollection>
-    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) @get:Optional
+    @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val localAssetSourceDirs: ListProperty<Collection<Directory>>
 
     @get:Internal var resArtifacts: ArtifactCollection? = null
@@ -97,7 +99,7 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         }
 
         if (diffs.isEmpty() && !isBaseline) {
-            println("Highlander: No changes in ${projectPath.get()} ($variantName)")
+            logger.lifecycle("Highlander: No changes in ${projectPath.get()} ($variantName)")
             return
         }
 
@@ -114,10 +116,6 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         }
     }
 
-    /**
-     * Returns null if no diff, or a diff string if baseline changed.
-     * In baseline mode, always writes and returns null.
-     */
     private fun processBaseline(
         label: String,
         file: File,
@@ -129,14 +127,13 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         if (isBaseline || !file.exists()) {
             file.writeText(currentContent)
             val relPath = file.relativeTo(project.projectDir)
-            println("Highlander baseline created: $relPath")
+            logger.lifecycle("Highlander baseline created: $relPath")
             return null
         }
 
         val expectedContent = file.readText()
         if (currentContent == expectedContent) return null
 
-        // Build diff
         val expected = BaselineFormat.parse(expectedContent)
         val added = current.filter { it !in expected }
         val removed = expected.filter { it !in current }
