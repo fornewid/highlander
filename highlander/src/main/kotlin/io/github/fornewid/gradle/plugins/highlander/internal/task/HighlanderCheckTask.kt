@@ -122,7 +122,7 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         current: List<DuplicateEntry>,
         isBaseline: Boolean,
     ): String? {
-        val currentContent = BaselineFormat.serialize(current)
+        val currentContent = BaselineFormat.serialize(current, appModulePath = projectPath.get())
 
         if (isBaseline) {
             file.writeText(currentContent)

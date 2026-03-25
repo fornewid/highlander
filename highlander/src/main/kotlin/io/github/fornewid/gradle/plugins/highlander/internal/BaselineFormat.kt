@@ -6,24 +6,29 @@ import io.github.fornewid.gradle.plugins.highlander.internal.models.SourceOrigin
 /**
  * Serializes and deserializes duplicate entries to/from a text-based baseline format.
  *
- * Each scan type (resources, native-libs, assets) gets its own baseline file.
- *
  * Format:
  * ```
+ * # override
  * drawable/ic_close:
  *   - :app
  *   - com.example:lib:1.0
- * layout/item_row:
- *   - :app
- *   - :feature:core
+ *
+ * # conflict
+ * drawable/sdk_icon:
+ *   - com.a:lib:1.0
+ *   - com.b:lib:2.0
  * ```
  */
 internal object BaselineFormat {
 
-    fun serialize(entries: List<DuplicateEntry>): String {
+    fun serialize(entries: List<DuplicateEntry>, appModulePath: String? = null): String {
         if (entries.isEmpty()) return ""
         val sb = StringBuilder()
         for (entry in entries) {
+            if (appModulePath != null) {
+                val tag = if (entry.sources.any { it.displayName == appModulePath }) "override" else "conflict"
+                sb.appendLine("# $tag")
+            }
             sb.appendLine("${entry.resourceKey}:")
             for (source in entry.sources) {
                 sb.appendLine("  - ${source.displayName}")
@@ -42,7 +47,7 @@ internal object BaselineFormat {
         for (rawLine in content.lines()) {
             val line = rawLine.trimEnd()
             when {
-                line.isBlank() -> continue
+                line.isBlank() || line.startsWith("#") -> continue
                 line.endsWith(":") && !line.startsWith("  ") -> {
                     flushEntry(entries, currentKey, currentSources)
                     currentKey = line.removeSuffix(":")
