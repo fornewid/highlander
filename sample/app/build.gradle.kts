@@ -15,7 +15,9 @@ android {
 
 dependencies {
     implementation(project(":sample:module1"))
+    implementation(project(":sample:module2"))
     implementation(libs.androidx.activity)
+    implementation(files("libs/fake-sdk.aar"))
 }
 
 highlander {

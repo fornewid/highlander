@@ -9,7 +9,3 @@ android {
         minSdk = 23
     }
 }
-
-dependencies {
-    implementation project(':sample:module2')
-}

@@ -1,7 +1,12 @@
 plugins {
-    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.android.library)
 }
 
-dependencies {
-    implementation libs.kotlinx.coroutines
+android {
+    namespace = "io.github.fornewid.highlander.sample.module2"
+    compileSdk = 36
+    defaultConfig {
+        minSdk = 23
+    }
+    resourcePrefix "m2_"
 }
