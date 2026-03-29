@@ -67,8 +67,10 @@ internal object ClassScanner {
                     classMap.getOrPut(className) { mutableSetOf() }.add(source)
                 }
             }
-        } catch (_: Exception) {
-            // Skip corrupt or unreadable JARs
+        } catch (_: java.util.zip.ZipException) {
+            // Skip corrupt JARs
+        } catch (_: java.io.IOException) {
+            // Skip unreadable JARs
         }
     }
 }
