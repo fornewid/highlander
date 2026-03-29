@@ -43,8 +43,8 @@ gradlePlugin {
       id = "io.github.fornewid.highlander"
       implementationClass = "io.github.fornewid.gradle.plugins.highlander.HighlanderPlugin"
       displayName = "Highlander"
-      description = "A Gradle plugin that detects duplicate resources across Android dependencies."
-      tags.set(listOf("android", "resources", "duplicates", "gradle-plugin"))
+      description = "A Gradle plugin that detects duplicate resources, assets, classes, and native libraries across Android dependencies."
+      tags.set(listOf("android", "gradle-plugin", "duplicates", "resources", "assets", "classes", "native-libs"))
     }
   }
 }

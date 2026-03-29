@@ -8,7 +8,8 @@ import org.gradle.language.base.plugins.LifecycleBasePlugin
 import java.util.Properties
 
 /**
- * A Gradle plugin that detects duplicate resources across Android dependencies.
+ * A Gradle plugin that detects duplicate resources, assets, classes,
+ * and native libraries across Android dependencies.
  *
  * Requires Android Gradle Plugin 8.0.0 or higher.
  */
