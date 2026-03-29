@@ -5,6 +5,8 @@
 [![Build](https://github.com/fornewid/highlander/actions/workflows/build.yml/badge.svg)](https://github.com/fornewid/highlander/actions/workflows/build.yml)
 [![License](https://img.shields.io/github/license/fornewid/highlander)](https://github.com/fornewid/highlander/blob/main/LICENSE)
 
+<img src="art/banner.png" alt="Highlander" width="400"/>
+
 > **"There can be only one."**
 
 A Gradle plugin that finds duplicate resources, assets, classes, and native libraries hiding across your Android dependencies — before they cause silent UI bugs, Dex merge failures, or runtime crashes.
