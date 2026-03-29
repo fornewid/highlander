@@ -186,13 +186,15 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
             for (entry in removed) {
                 appendLine("- ${entry.resourceKey}:")
                 for (source in entry.sources) {
-                    appendLine("-   - ${source.displayName}")
+                    val ext = entry.extensions[source.displayName]?.let { " ($it)" } ?: ""
+                    appendLine("-   - ${source.displayName}$ext")
                 }
             }
             for (entry in added) {
                 appendLine("+ ${entry.resourceKey}:")
                 for (source in entry.sources) {
-                    appendLine("+   - ${source.displayName}")
+                    val ext = entry.extensions[source.displayName]?.let { " ($it)" } ?: ""
+                    appendLine("+   - ${source.displayName}$ext")
                 }
             }
         }
