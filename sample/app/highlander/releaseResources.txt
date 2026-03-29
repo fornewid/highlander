@@ -1,0 +1,6 @@
+# override
+drawable/ic_close:
+  - :sample:app (.xml)
+  - :sample:module1 (.xml)
+  - :sample:module2 (.xml)
+  - fake-sdk.aar (.xml)

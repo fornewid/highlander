@@ -1,0 +1,11 @@
+plugins {
+    alias(libs.plugins.android.library)
+}
+
+android {
+    namespace = "io.github.fornewid.highlander.sample.module1"
+    compileSdk = 36
+    defaultConfig {
+        minSdk = 23
+    }
+}

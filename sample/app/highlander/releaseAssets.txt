@@ -1,0 +1,5 @@
+# override
+config.json:
+  - :sample:app
+  - :sample:module1
+  - fake-sdk.aar

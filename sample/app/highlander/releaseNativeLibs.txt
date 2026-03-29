@@ -1,0 +1,4 @@
+# override
+arm64-v8a/libnative.so:
+  - :sample:app
+  - :sample:module1
