@@ -23,4 +23,7 @@ public open class HighlanderConfiguration @Inject constructor(
 
     /** Scan for duplicate assets */
     public var assets: Boolean = true
+
+    /** Scan for duplicate Java/Kotlin classes across dependency JARs/AARs */
+    public var classes: Boolean = false
 }

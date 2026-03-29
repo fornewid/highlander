@@ -18,6 +18,7 @@ internal object AndroidVariantHandler {
     private const val ARTIFACT_TYPE_RES = "android-res"
     private const val ARTIFACT_TYPE_JNI = "android-jni"
     private const val ARTIFACT_TYPE_ASSETS = "android-assets"
+    private const val ARTIFACT_TYPE_CLASSES_JAR = "android-classes-jar"
 
     fun configureVariants(
         project: Project,
@@ -116,6 +117,13 @@ internal object AndroidVariantHandler {
             }.artifacts
         } else null
 
+        val classesArtifacts = if (config.classes) {
+            runtimeClasspath.incoming.artifactView {
+                attributes.attribute(artifactTypeAttr, ARTIFACT_TYPE_CLASSES_JAR)
+                isLenient = true
+            }.artifacts
+        } else null
+
         val localResDirs = if (needsRes) variant.sources.res?.all else null
         val localAssetDirs = if (config.assets) variant.sources.assets?.all else null
         val localJniLibDirs = if (config.nativeLibs) variant.sources.jniLibs?.all else null
@@ -128,6 +136,7 @@ internal object AndroidVariantHandler {
             task.scanValuesResources.set(config.valuesResources)
             task.scanNativeLibs.set(config.nativeLibs)
             task.scanAssets.set(config.assets)
+            task.scanClasses.set(config.classes)
             task.baselineDir.set(baselineDirectory)
 
             // Configuration-cache-safe: convert ArtifactCollection to serializable map
@@ -152,6 +161,12 @@ internal object AndroidVariantHandler {
                 )
             }
             if (localAssetDirs != null) task.localAssetSourceDirs.set(localAssetDirs)
+            if (classesArtifacts != null) {
+                task.classesFiles.set(classesArtifacts.artifactFiles)
+                task.classesArtifactMapping.set(
+                    project.provider { toArtifactMapping(classesArtifacts) }
+                )
+            }
         }
 
         val perConfigGuardTask = project.tasks.register(

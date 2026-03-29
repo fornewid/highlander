@@ -25,5 +25,6 @@ highlander {
         resources = true
         nativeLibs = true
         assets = true
+        classes = true
     }
 }

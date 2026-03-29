@@ -5,6 +5,7 @@ import io.github.fornewid.gradle.plugins.highlander.internal.BaselineFormat
 import io.github.fornewid.gradle.plugins.highlander.internal.models.DuplicateEntry
 import io.github.fornewid.gradle.plugins.highlander.internal.models.SourceOrigin
 import io.github.fornewid.gradle.plugins.highlander.internal.scanner.AssetScanner
+import io.github.fornewid.gradle.plugins.highlander.internal.scanner.ClassScanner
 import io.github.fornewid.gradle.plugins.highlander.internal.scanner.NativeLibScanner
 import io.github.fornewid.gradle.plugins.highlander.internal.scanner.ResourceScanner
 import io.github.fornewid.gradle.plugins.highlander.internal.scanner.ValuesResourceScanner
@@ -40,6 +41,7 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
     @get:Input abstract val scanValuesResources: Property<Boolean>
     @get:Input abstract val scanNativeLibs: Property<Boolean>
     @get:Input abstract val scanAssets: Property<Boolean>
+    @get:Input abstract val scanClasses: Property<Boolean>
 
     @get:Internal abstract val baselineDir: DirectoryProperty
 
@@ -57,6 +59,8 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
     abstract val assetFiles: Property<FileCollection>
     @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val localAssetSourceDirs: ListProperty<Collection<Directory>>
+    @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val classesFiles: Property<FileCollection>
 
     // Configuration-cache-safe: serializable maps instead of ArtifactCollection.
     // Key: file absolute path, Value: SourceOrigin display name
@@ -66,6 +70,8 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
     abstract val jniArtifactMapping: MapProperty<String, String>
     @get:Input @get:Optional
     abstract val assetArtifactMapping: MapProperty<String, String>
+    @get:Input @get:Optional
+    abstract val classesArtifactMapping: MapProperty<String, String>
 
     @TaskAction
     fun execute() {
@@ -109,6 +115,16 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
                 label = "assets",
                 file = File(dir, "${variantName}Assets.txt"),
                 current = scanAssets(),
+                isBaseline = isBaseline,
+            )
+            if (result != null) diffs.add(result)
+        }
+
+        if (scanClasses.get()) {
+            val result = processBaseline(
+                label = "classes",
+                file = File(dir, "${variantName}Classes.txt"),
+                current = scanClasses(),
                 isBaseline = isBaseline,
             )
             if (result != null) diffs.add(result)
@@ -208,6 +224,10 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         sources.addAll(resolveFromMapping(assetArtifactMapping))
         addLocalDirs(sources, localAssetSourceDirs)
         return AssetScanner.scan(sources)
+    }
+
+    private fun scanClasses(): List<DuplicateEntry> {
+        return ClassScanner.scan(resolveFromMapping(classesArtifactMapping))
     }
 
     private fun addLocalDirs(
