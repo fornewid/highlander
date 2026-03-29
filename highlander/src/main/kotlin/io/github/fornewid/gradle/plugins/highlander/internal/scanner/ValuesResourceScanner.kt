@@ -14,11 +14,13 @@ import javax.xml.parsers.DocumentBuilderFactory
  */
 internal object ValuesResourceScanner {
 
-    private val docBuilderFactory = DocumentBuilderFactory.newInstance().apply {
-        isNamespaceAware = false
-        setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-        setFeature("http://xml.org/sax/features/external-general-entities", false)
-        setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+    private fun newDocBuilderFactory(): DocumentBuilderFactory {
+        return DocumentBuilderFactory.newInstance().apply {
+            isNamespaceAware = false
+            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+            setFeature("http://xml.org/sax/features/external-general-entities", false)
+            setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+        }
     }
 
     // XML tags that define value resources, mapped to their resource type name
@@ -80,7 +82,7 @@ internal object ValuesResourceScanner {
         entryMap: MutableMap<String, MutableSet<SourceOrigin>>,
     ) {
         try {
-            val doc = docBuilderFactory.newDocumentBuilder().parse(file)
+            val doc = newDocBuilderFactory().newDocumentBuilder().parse(file)
             val root = doc.documentElement ?: return
 
             val children = root.childNodes
