@@ -43,7 +43,7 @@ internal object ResourceScanner {
             val files = typeDir.listFiles()?.filter { it.isFile } ?: continue
             for (file in files) {
                 val baseName = file.nameWithoutExtension
-                val resourceName = if (file.extension == "png") baseName.removeSuffix(".9") else baseName
+                val resourceName = if (file.name.endsWith(".9.png")) baseName.removeSuffix(".9") else baseName
                 val key = "$dirName/$resourceName"
                 val ext = ".${file.extension}"
                 resourceMap.getOrPut(key) { mutableMapOf() }.putIfAbsent(source, ext)

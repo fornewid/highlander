@@ -72,9 +72,8 @@ internal object AndroidVariantHandler {
         }
     }
 
-    @Suppress("DEPRECATION")
-    private fun String.capitalize(): String {
-        return if (isEmpty()) "" else get(0).toUpperCase() + substring(1)
+    private fun String.capitalizeFirst(): String {
+        return replaceFirstChar { it.uppercase() }
     }
 
     private fun registerTasks(
@@ -85,7 +84,7 @@ internal object AndroidVariantHandler {
         guardTask: TaskProvider<*>,
         baselineTask: TaskProvider<*>,
     ) {
-        val capitalizedName = config.configurationName.capitalize()
+        val capitalizedName = config.configurationName.capitalizeFirst()
         val runtimeClasspath = project.configurations.getByName(
             "${config.configurationName}RuntimeClasspath"
         )

@@ -39,6 +39,10 @@ jobs:
         if: ${{ !endsWith(steps.version.outputs.version, '-SNAPSHOT') }}
         uses: gradle/actions/setup-gradle@v5
 
+      - name: Verify build before publish
+        if: ${{ !endsWith(steps.version.outputs.version, '-SNAPSHOT') }}
+        run: ./gradlew :highlander:check --stacktrace
+
       - name: Publish to Maven Central
         if: ${{ !endsWith(steps.version.outputs.version, '-SNAPSHOT') }}
         run: ./gradlew :highlander:publish --no-parallel --stacktrace
