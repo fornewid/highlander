@@ -99,8 +99,12 @@ internal object ValuesResourceScanner {
                 val key = "$qualifier/$resType/$name"
                 entryMap.getOrPut(key) { mutableSetOf() }.add(source)
             }
-        } catch (_: Exception) {
+        } catch (_: org.xml.sax.SAXException) {
             // Skip malformed XML files
+        } catch (_: java.io.IOException) {
+            // Skip unreadable files
+        } catch (_: javax.xml.parsers.ParserConfigurationException) {
+            // Skip if parser cannot be configured
         }
     }
 
