@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   create-release-pr:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     # TODO: Replace permission check with `environment: release` after making repo public.
     # environment: release
     steps:
