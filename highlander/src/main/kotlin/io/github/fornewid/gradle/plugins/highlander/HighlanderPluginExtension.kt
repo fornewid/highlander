@@ -27,11 +27,19 @@ public open class HighlanderPluginExtension @Inject constructor(
     internal val configurations = objects.domainObjectContainer(HighlanderConfiguration::class.java)
 
     public fun configuration(name: String) {
+        checkDuplicate(name)
         configurations.add(newConfiguration(name))
     }
 
     public fun configuration(name: String, config: Action<HighlanderConfiguration>) {
+        checkDuplicate(name)
         configurations.add(newConfiguration(name, config))
+    }
+
+    private fun checkDuplicate(name: String) {
+        require(configurations.findByName(name) == null) {
+            "Highlander configuration \"$name\" is already defined. Each configuration name must be unique."
+        }
     }
 
     private fun newConfiguration(
