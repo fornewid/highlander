@@ -44,6 +44,7 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
     @get:Input abstract val scanClasses: Property<Boolean>
 
     @get:Internal abstract val baselineDir: DirectoryProperty
+    @get:Internal abstract val projectDir: DirectoryProperty
 
     // @InputFiles ensures Gradle infers task dependencies (e.g., generateResValues).
     // @Optional allows scan types to be selectively disabled.
@@ -158,13 +159,13 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
 
         if (isBaseline) {
             file.writeText(currentContent)
-            val relPath = file.relativeTo(project.projectDir)
+            val relPath = file.relativeTo(projectDir.get().asFile)
             logger.lifecycle("Highlander baseline created: $relPath")
             return null
         }
 
         if (!file.exists()) {
-            val relPath = file.relativeTo(project.projectDir)
+            val relPath = file.relativeTo(projectDir.get().asFile)
             return buildString {
                 appendLine("=== $label ===")
                 appendLine("Baseline not found: $relPath")

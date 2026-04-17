@@ -23,6 +23,6 @@ internal object Builder {
         // Do NOT use withPluginClasspath() - AGP classloader isolation issues.
         // Plugin JAR is injected via buildscript classpath in the test project.
         withProjectDir(project.dir)
-        withArguments(args.toList() + "-s")
+        withArguments(args.toList() + "-s" + "--configuration-cache" + "--configuration-cache-problems=fail")
     }
 }

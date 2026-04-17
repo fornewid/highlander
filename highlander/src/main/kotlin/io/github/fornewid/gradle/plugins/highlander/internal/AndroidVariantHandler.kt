@@ -29,37 +29,53 @@ internal object AndroidVariantHandler {
         val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
         verifyAgpVersion(androidComponents)
 
+        val allVariantNames = mutableSetOf<String>()
+        val declaredConfigNames = mutableSetOf<String>()
+        val matchedConfigs = mutableSetOf<String>()
+
+        // Populate declared names unconditionally so validation still runs even
+        // if no variants are emitted (e.g. every variant disabled via beforeVariants).
+        extension.configurations.configureEach {
+            declaredConfigNames.add(configurationName)
+        }
+
         androidComponents.onVariants { variant ->
+            allVariantNames.add(variant.name)
             extension.configurations.configureEach {
                 if (configurationName == variant.name) {
+                    matchedConfigs.add(configurationName)
                     registerTasks(project, extension.baselineDir.get(), this, variant, guardTask, baselineTask)
                 }
             }
         }
 
-        val validateConfigurations: () -> Unit = {
-            extension.configurations.forEach { config ->
-                val probeConfigName = "${config.configurationName}RuntimeClasspath"
-                if (project.configurations.findByName(probeConfigName) == null) {
-                    val availableVariants = project.configurations.names
-                        .filter { it.endsWith("RuntimeClasspath") }
-                        .map { it.removeSuffix("RuntimeClasspath") }
-                    throw GradleException(buildString {
-                        appendLine("Highlander could not resolve configuration \"${config.configurationName}\".")
-                        if (availableVariants.isNotEmpty()) {
-                            appendLine("Here are some valid configurations you could use.")
-                            appendLine()
-                            appendLine("highlander {")
-                            availableVariants.forEach { appendLine("    configuration(\"$it\")") }
-                            appendLine("}")
-                        }
-                    })
-                }
+        guardTask.configure {
+            validateConfigurations(declaredConfigNames, matchedConfigs, allVariantNames)
+        }
+        baselineTask.configure {
+            validateConfigurations(declaredConfigNames, matchedConfigs, allVariantNames)
+        }
+    }
+
+    private fun validateConfigurations(
+        declaredConfigNames: Set<String>,
+        matchedConfigs: Set<String>,
+        allVariantNames: Set<String>,
+    ) {
+        for (name in declaredConfigNames) {
+            if (name !in matchedConfigs) {
+                throw GradleException(buildString {
+                    appendLine("Highlander could not resolve configuration \"$name\".")
+                    if (allVariantNames.isNotEmpty()) {
+                        appendLine("Here are some valid configurations you could use.")
+                        appendLine()
+                        appendLine("highlander {")
+                        allVariantNames.forEach { appendLine("    configuration(\"$it\")") }
+                        appendLine("}")
+                    }
+                })
             }
         }
-
-        guardTask.configure { doFirst { validateConfigurations() } }
-        baselineTask.configure { doFirst { validateConfigurations() } }
     }
 
     private fun verifyAgpVersion(androidComponents: AndroidComponentsExtension<*, *, *>) {
@@ -137,6 +153,7 @@ internal object AndroidVariantHandler {
             task.scanAssets.set(config.assets)
             task.scanClasses.set(config.classes)
             task.baselineDir.set(baselineDirectory)
+            task.projectDir.set(project.layout.projectDirectory)
 
             // Configuration-cache-safe: convert ArtifactCollection to serializable map
             if (resArtifacts != null) {
