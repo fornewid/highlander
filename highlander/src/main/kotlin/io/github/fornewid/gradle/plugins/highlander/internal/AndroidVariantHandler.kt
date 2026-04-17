@@ -33,10 +33,15 @@ internal object AndroidVariantHandler {
         val declaredConfigNames = mutableSetOf<String>()
         val matchedConfigs = mutableSetOf<String>()
 
+        // Populate declared names unconditionally so validation still runs even
+        // if no variants are emitted (e.g. every variant disabled via beforeVariants).
+        extension.configurations.configureEach {
+            declaredConfigNames.add(configurationName)
+        }
+
         androidComponents.onVariants { variant ->
             allVariantNames.add(variant.name)
             extension.configurations.configureEach {
-                declaredConfigNames.add(configurationName)
                 if (configurationName == variant.name) {
                     matchedConfigs.add(configurationName)
                     registerTasks(project, extension.baselineDir.get(), this, variant, guardTask, baselineTask)
