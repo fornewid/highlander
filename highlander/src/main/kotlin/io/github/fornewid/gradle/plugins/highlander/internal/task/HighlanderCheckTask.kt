@@ -213,17 +213,15 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         val sources = mutableListOf<Pair<File, SourceOrigin>>()
         sources.addAll(resolveFromMapping(resArtifactMapping))
         addLocalDirs(sources, localResourceDirs)
-        val effective = if (excludeAndroidXValues.get()) {
-            sources.filterNot { (_, origin) -> isAndroidXDependency(origin) }
-        } else {
-            sources
+        if (excludeAndroidXValues.get()) {
+            sources.removeAll { (_, origin) -> isAndroidXDependency(origin) }
         }
-        return ValuesResourceScanner.scan(effective)
+        return ValuesResourceScanner.scan(sources)
     }
 
     private fun isAndroidXDependency(origin: SourceOrigin): Boolean {
         return origin is SourceOrigin.ExternalDependency &&
-            origin.coordinates.startsWith("androidx.")
+            origin.displayName.startsWith("androidx.")
     }
 
     private fun scanJni(): List<DuplicateEntry> {
