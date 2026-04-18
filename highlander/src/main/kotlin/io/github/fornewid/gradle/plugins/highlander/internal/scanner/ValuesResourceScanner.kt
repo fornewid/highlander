@@ -95,10 +95,10 @@ internal object ValuesResourceScanner {
                 val name = (node as? org.w3c.dom.Element)?.getAttribute("name")
                 if (name.isNullOrBlank()) continue
 
-                // AAPT2 treats <item type="id" name=".."/> with empty body as a weak Id value
-                // that merges across declarations without error (same R.id.* int), so duplicates
-                // are not a real conflict.
-                if (tagName == "item" && resType == "id" && isEmptyBody(node)) continue
+                // AAPT2 treats empty-body id declarations (<item type="id" name=".."/> or the
+                // shorthand <id name=".."/>) as weak Id values that merge across declarations
+                // without error (same R.id.* int), so duplicates are not a real conflict.
+                if (resType == "id" && isEmptyBody(node)) continue
 
                 // Key: "values-qualifier/type/name" e.g., "values/string/app_name"
                 val key = "$qualifier/$resType/$name"

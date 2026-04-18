@@ -106,6 +106,27 @@ internal class ValuesResourceScannerTest {
     }
 
     @Test
+    fun `empty body id shorthand tag is also skipped`() {
+        val moduleA = createResDir("moduleA", mapOf(
+            "values/ids.xml" to """
+                <resources><id name="shared"/></resources>
+            """.trimIndent(),
+        ))
+        val moduleB = createResDir("moduleB", mapOf(
+            "values/ids.xml" to """
+                <resources><item type="id" name="shared"/></resources>
+            """.trimIndent(),
+        ))
+
+        val duplicates = ValuesResourceScanner.scan(listOf(
+            moduleA to SourceOrigin.Module(":a"),
+            moduleB to SourceOrigin.Module(":b"),
+        ))
+
+        assertThat(duplicates).isEmpty()
+    }
+
+    @Test
     fun `id item with reference body is still tracked as duplicate`() {
         val moduleA = createResDir("moduleA", mapOf(
             "values/ids.xml" to """
