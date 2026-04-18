@@ -152,6 +152,7 @@ internal object AndroidVariantHandler {
             task.scanNativeLibs.set(config.nativeLibs)
             task.scanAssets.set(config.assets)
             task.scanClasses.set(config.classes)
+            task.excludeAndroidXValues.set(config.excludeAndroidXValues)
             task.baselineDir.set(baselineDirectory)
             task.projectDir.set(project.layout.projectDirectory)
 

@@ -2,6 +2,8 @@ package io.github.fornewid.gradle.plugins.highlander
 
 import com.google.common.truth.Truth.assertThat
 import io.github.fornewid.gradle.plugins.highlander.fixture.AndroidProject
+import io.github.fornewid.gradle.plugins.highlander.fixture.AndroidXValuesProject
+import io.github.fornewid.gradle.plugins.highlander.fixture.Builder
 import io.github.fornewid.gradle.plugins.highlander.fixture.Builder.build
 import io.github.fornewid.gradle.plugins.highlander.fixture.Builder.buildAndFail
 import org.junit.jupiter.api.Test
@@ -79,6 +81,30 @@ internal class HighlanderPluginTest {
             assertThat(result.output).contains("could not resolve configuration \"nonExistent\"")
             assertThat(result.output).contains("configuration(\"release\")")
             assertThat(result.output).contains("configuration(\"debug\")")
+        }
+    }
+
+    @Test
+    fun `excludeAndroidXValues true filters androidx values duplicates from baseline`() {
+        AndroidXValuesProject(excludeAndroidXValues = true).use { project ->
+            Builder.build(project.dir, ":app:highlanderBaselineRelease")
+
+            val baseline = project.readFile("app/highlander/releaseValues.txt")
+            // AndroidX group filtered out → no duplicate reported; file is created but empty.
+            assertThat(baseline).isEqualTo("")
+        }
+    }
+
+    @Test
+    fun `excludeAndroidXValues false keeps androidx values duplicates in baseline`() {
+        AndroidXValuesProject(excludeAndroidXValues = false).use { project ->
+            Builder.build(project.dir, ":app:highlanderBaselineRelease")
+
+            val baseline = project.readFile("app/highlander/releaseValues.txt")
+            assertThat(baseline).isNotNull()
+            assertThat(baseline).contains("values/string/shared_string")
+            assertThat(baseline).contains("androidx.testsample:fake:1.0.0")
+            assertThat(baseline).contains(":app")
         }
     }
 
