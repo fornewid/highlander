@@ -84,7 +84,7 @@ internal class ValuesResourceScannerTest {
     }
 
     @Test
-    fun `handles item tags with type attribute`() {
+    fun `empty body id item is treated as weak slot and skipped`() {
         val moduleA = createResDir("moduleA", mapOf(
             "values/ids.xml" to """
                 <resources><item type="id" name="my_id"/></resources>
@@ -101,8 +101,116 @@ internal class ValuesResourceScannerTest {
             moduleB to SourceOrigin.Module(":b"),
         ))
 
+        // AAPT2 merges weak Id values without error, so this is not a real conflict.
+        assertThat(duplicates).isEmpty()
+    }
+
+    @Test
+    fun `id item with reference body is still tracked as duplicate`() {
+        val moduleA = createResDir("moduleA", mapOf(
+            "values/ids.xml" to """
+                <resources><item type="id" name="aliased">@id/other</item></resources>
+            """.trimIndent(),
+        ))
+        val moduleB = createResDir("moduleB", mapOf(
+            "values/ids.xml" to """
+                <resources><item type="id" name="aliased">@id/different</item></resources>
+            """.trimIndent(),
+        ))
+
+        val duplicates = ValuesResourceScanner.scan(listOf(
+            moduleA to SourceOrigin.Module(":a"),
+            moduleB to SourceOrigin.Module(":b"),
+        ))
+
+        assertThat(duplicates).hasSize(1)
+        assertThat(duplicates[0].resourceKey).isEqualTo("values/id/aliased")
+    }
+
+    @Test
+    fun `whitespace-only id item is treated as empty body`() {
+        val moduleA = createResDir("moduleA", mapOf(
+            "values/ids.xml" to """
+                <resources><item type="id" name="my_id">   </item></resources>
+            """.trimIndent(),
+        ))
+        val moduleB = createResDir("moduleB", mapOf(
+            "values/ids.xml" to """
+                <resources><item type="id" name="my_id"></item></resources>
+            """.trimIndent(),
+        ))
+
+        val duplicates = ValuesResourceScanner.scan(listOf(
+            moduleA to SourceOrigin.Module(":a"),
+            moduleB to SourceOrigin.Module(":b"),
+        ))
+
+        assertThat(duplicates).isEmpty()
+    }
+
+    @Test
+    fun `comment-only id item body is treated as empty`() {
+        val moduleA = createResDir("moduleA", mapOf(
+            "values/ids.xml" to """
+                <resources><item type="id" name="my_id"><!-- reserved --></item></resources>
+            """.trimIndent(),
+        ))
+        val moduleB = createResDir("moduleB", mapOf(
+            "values/ids.xml" to """
+                <resources><item type="id" name="my_id"/></resources>
+            """.trimIndent(),
+        ))
+
+        val duplicates = ValuesResourceScanner.scan(listOf(
+            moduleA to SourceOrigin.Module(":a"),
+            moduleB to SourceOrigin.Module(":b"),
+        ))
+
+        assertThat(duplicates).isEmpty()
+    }
+
+    @Test
+    fun `id item with comment plus non-blank text is tracked as duplicate`() {
+        val moduleA = createResDir("moduleA", mapOf(
+            "values/ids.xml" to """
+                <resources><item type="id" name="my_id">  <!-- note -->@id/other</item></resources>
+            """.trimIndent(),
+        ))
+        val moduleB = createResDir("moduleB", mapOf(
+            "values/ids.xml" to """
+                <resources><item type="id" name="my_id">@id/different</item></resources>
+            """.trimIndent(),
+        ))
+
+        val duplicates = ValuesResourceScanner.scan(listOf(
+            moduleA to SourceOrigin.Module(":a"),
+            moduleB to SourceOrigin.Module(":b"),
+        ))
+
         assertThat(duplicates).hasSize(1)
         assertThat(duplicates[0].resourceKey).isEqualTo("values/id/my_id")
+    }
+
+    @Test
+    fun `non-id item tags with empty body are still tracked`() {
+        val moduleA = createResDir("moduleA", mapOf(
+            "values/items.xml" to """
+                <resources><item type="string" name="empty_str"/></resources>
+            """.trimIndent(),
+        ))
+        val moduleB = createResDir("moduleB", mapOf(
+            "values/items.xml" to """
+                <resources><item type="string" name="empty_str"/></resources>
+            """.trimIndent(),
+        ))
+
+        val duplicates = ValuesResourceScanner.scan(listOf(
+            moduleA to SourceOrigin.Module(":a"),
+            moduleB to SourceOrigin.Module(":b"),
+        ))
+
+        assertThat(duplicates).hasSize(1)
+        assertThat(duplicates[0].resourceKey).isEqualTo("values/string/empty_str")
     }
 
     @Test

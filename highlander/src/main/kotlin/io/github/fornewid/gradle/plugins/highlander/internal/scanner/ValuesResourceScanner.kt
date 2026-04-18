@@ -95,6 +95,11 @@ internal object ValuesResourceScanner {
                 val name = (node as? org.w3c.dom.Element)?.getAttribute("name")
                 if (name.isNullOrBlank()) continue
 
+                // AAPT2 treats <item type="id" name=".."/> with empty body as a weak Id value
+                // that merges across declarations without error (same R.id.* int), so duplicates
+                // are not a real conflict.
+                if (tagName == "item" && resType == "id" && isEmptyBody(node)) continue
+
                 // Key: "values-qualifier/type/name" e.g., "values/string/app_name"
                 val key = "$qualifier/$resType/$name"
                 entryMap.getOrPut(key) { mutableSetOf() }.add(source)
@@ -106,6 +111,26 @@ internal object ValuesResourceScanner {
         } catch (_: javax.xml.parsers.ParserConfigurationException) {
             // Skip if parser cannot be configured
         }
+    }
+
+    private fun isEmptyBody(node: org.w3c.dom.Node): Boolean {
+        val children = node.childNodes
+        for (i in 0 until children.length) {
+            val child = children.item(i)
+            when (child.nodeType) {
+                org.w3c.dom.Node.ELEMENT_NODE -> return false
+                org.w3c.dom.Node.TEXT_NODE,
+                org.w3c.dom.Node.CDATA_SECTION_NODE -> {
+                    if (!child.nodeValue.isNullOrBlank()) return false
+                }
+                org.w3c.dom.Node.COMMENT_NODE,
+                org.w3c.dom.Node.PROCESSING_INSTRUCTION_NODE -> continue
+                // Conservative: unfamiliar node types (e.g. ENTITY_REFERENCE) may carry text
+                // that AAPT2 would see as non-empty body; treat as non-empty to avoid false skips.
+                else -> return false
+            }
+        }
+        return true
     }
 
     private fun resolveResourceType(tagName: String, node: org.w3c.dom.Node): String? {
