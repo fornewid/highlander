@@ -42,6 +42,7 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
     @get:Input abstract val scanNativeLibs: Property<Boolean>
     @get:Input abstract val scanAssets: Property<Boolean>
     @get:Input abstract val scanClasses: Property<Boolean>
+    @get:Input abstract val excludeAndroidXValues: Property<Boolean>
 
     @get:Internal abstract val baselineDir: DirectoryProperty
     @get:Internal abstract val projectDir: DirectoryProperty
@@ -212,7 +213,15 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         val sources = mutableListOf<Pair<File, SourceOrigin>>()
         sources.addAll(resolveFromMapping(resArtifactMapping))
         addLocalDirs(sources, localResourceDirs)
+        if (excludeAndroidXValues.get()) {
+            sources.removeAll { (_, origin) -> isAndroidXDependency(origin) }
+        }
         return ValuesResourceScanner.scan(sources)
+    }
+
+    private fun isAndroidXDependency(origin: SourceOrigin): Boolean {
+        return origin is SourceOrigin.ExternalDependency &&
+            origin.displayName.startsWith("androidx.")
     }
 
     private fun scanJni(): List<DuplicateEntry> {
