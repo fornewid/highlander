@@ -1,8 +1,7 @@
 package io.github.fornewid.gradle.plugins.highlander.fixture
 
-import java.io.File
 import java.io.ByteArrayOutputStream
-import java.util.UUID
+import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -15,59 +14,18 @@ internal class AndroidXValuesProject(
     private val excludeAndroidXValues: Boolean,
 ) : AutoCloseable {
 
-    val dir: File = File("build/gradleTest/${UUID.randomUUID()}").apply { mkdirs() }
+    private val scaffold: TestProjectScaffold = TestProjectScaffold.create()
+
+    val dir: File get() = scaffold.dir
 
     init {
-        val pluginJar = System.getProperty("pluginJar")
-            ?: error("pluginJar system property not set. Run via '../gradlew gradleTest'")
-        val escapedJar = pluginJar.replace("\\", "/")
-
         val localRepo = dir.resolve("local-maven-repo").apply { mkdirs() }
         publishFakeAndroidXAar(localRepo)
-        val escapedRepo = localRepo.absolutePath.replace("\\", "/")
 
-        dir.resolve("settings.gradle").writeText(
-            """
-            rootProject.name = "test-project"
-            include ':app'
-            """.trimIndent()
-        )
-
-        dir.resolve("build.gradle").writeText(
-            """
-            buildscript {
-                repositories {
-                    google()
-                    mavenCentral()
-                    maven { url '$escapedRepo' }
-                }
-                dependencies {
-                    classpath 'com.android.tools.build:gradle:8.5.0'
-                    classpath files('$escapedJar')
-                }
-            }
-            allprojects {
-                repositories {
-                    google()
-                    mavenCentral()
-                    maven { url '$escapedRepo' }
-                }
-            }
-            """.trimIndent()
-        )
-
-        dir.resolve("gradle.properties").writeText(
-            """
-            android.useAndroidX=true
-            org.gradle.jvmargs=-Xmx1g
-            """.trimIndent()
-        )
-
-        val androidHome = System.getenv("ANDROID_HOME")
-            ?: System.getenv("ANDROID_SDK_ROOT")
-            ?: findSdkDirFromLocalProperties()
-            ?: error("ANDROID_HOME or ANDROID_SDK_ROOT must be set")
-        dir.resolve("local.properties").writeText("sdk.dir=$androidHome")
+        scaffold.writeSettings("test-project", listOf(":app"))
+        scaffold.writeRootBuildscript(extraRepoUrls = listOf(localRepo.absolutePath))
+        scaffold.writeGradleProperties()
+        scaffold.writeLocalProperties()
 
         val appDir = dir.resolve("app").apply { mkdirs() }
         appDir.resolve("build.gradle").writeText(
@@ -124,13 +82,10 @@ internal class AndroidXValuesProject(
         )
     }
 
-    fun readFile(relativePath: String): String? {
-        val file = dir.resolve(relativePath)
-        return if (file.exists()) file.readText() else null
-    }
+    fun readFile(relativePath: String): String? = scaffold.readFile(relativePath)
 
     override fun close() {
-        dir.deleteRecursively()
+        scaffold.delete()
     }
 
     private fun publishFakeAndroidXAar(repoDir: File) {
@@ -185,19 +140,5 @@ internal class AndroidXValuesProject(
             </project>
             """.trimIndent()
         )
-    }
-
-    private fun findSdkDirFromLocalProperties(): String? {
-        var current: File? = File("").absoluteFile
-        while (current != null) {
-            val localProps = current.resolve("local.properties")
-            if (localProps.exists()) {
-                val props = java.util.Properties().apply { localProps.reader().use { load(it) } }
-                val sdkDir = props.getProperty("sdk.dir")
-                if (sdkDir != null) return sdkDir
-            }
-            current = current.parentFile
-        }
-        return null
     }
 }

@@ -1,7 +1,6 @@
 package io.github.fornewid.gradle.plugins.highlander.fixture
 
 import java.io.File
-import java.util.UUID
 
 internal class AndroidProject(
     private val pluginConfig: String = DEFAULT_PLUGIN_CONFIG,
@@ -9,58 +8,15 @@ internal class AndroidProject(
     private val moduleResources: Map<String, String> = emptyMap(),
 ) : AutoCloseable {
 
-    val dir: File = File("build/gradleTest/${UUID.randomUUID()}").apply { mkdirs() }
+    private val scaffold: TestProjectScaffold = TestProjectScaffold.create()
+
+    val dir: File get() = scaffold.dir
 
     init {
-        val pluginJar = System.getProperty("pluginJar")
-            ?: error("pluginJar system property not set. Run via '../gradlew gradleTest'")
-        val escapedJar = pluginJar.replace("\\", "/")
-
-        // settings.gradle
-        dir.resolve("settings.gradle").writeText(
-            """
-            rootProject.name = "test-project"
-            include ':app'
-            include ':module1'
-            """.trimIndent()
-        )
-
-        // root build.gradle
-        dir.resolve("build.gradle").writeText(
-            """
-            buildscript {
-                repositories {
-                    google()
-                    mavenCentral()
-                }
-                dependencies {
-                    classpath 'com.android.tools.build:gradle:8.5.0'
-                    classpath files('$escapedJar')
-                }
-            }
-            allprojects {
-                repositories {
-                    google()
-                    mavenCentral()
-                }
-            }
-            """.trimIndent()
-        )
-
-        // gradle.properties
-        dir.resolve("gradle.properties").writeText(
-            """
-            android.useAndroidX=true
-            org.gradle.jvmargs=-Xmx1g
-            """.trimIndent()
-        )
-
-        // local.properties
-        val androidHome = System.getenv("ANDROID_HOME")
-            ?: System.getenv("ANDROID_SDK_ROOT")
-            ?: findSdkDirFromLocalProperties()
-            ?: error("ANDROID_HOME or ANDROID_SDK_ROOT must be set")
-        dir.resolve("local.properties").writeText("sdk.dir=$androidHome")
+        scaffold.writeSettings("test-project", listOf(":app", ":module1"))
+        scaffold.writeRootBuildscript()
+        scaffold.writeGradleProperties()
+        scaffold.writeLocalProperties()
 
         // app module
         val appDir = dir.resolve("app").apply { mkdirs() }
@@ -98,7 +54,6 @@ internal class AndroidProject(
             """.trimIndent()
         )
 
-        // Create app resources
         for ((path, content) in appResources) {
             val file = appSrcDir.resolve("res/$path")
             file.parentFile.mkdirs()
@@ -122,14 +77,8 @@ internal class AndroidProject(
         )
 
         val module1SrcDir = module1Dir.resolve("src/main").apply { mkdirs() }
-        module1SrcDir.resolve("AndroidManifest.xml").writeText(
-            """
-            <?xml version="1.0" encoding="utf-8"?>
-            <manifest xmlns:android="http://schemas.android.com/apk/res/android" />
-            """.trimIndent()
-        )
+        scaffold.writeEmptyManifest(module1SrcDir.resolve("AndroidManifest.xml"))
 
-        // Create module1 resources
         for ((path, content) in moduleResources) {
             val file = module1SrcDir.resolve("res/$path")
             file.parentFile.mkdirs()
@@ -137,10 +86,7 @@ internal class AndroidProject(
         }
     }
 
-    fun readFile(relativePath: String): String? {
-        val file = dir.resolve(relativePath)
-        return if (file.exists()) file.readText() else null
-    }
+    fun readFile(relativePath: String): String? = scaffold.readFile(relativePath)
 
     fun addAppResource(path: String, content: String) {
         val file = dir.resolve("app/src/main/res/$path")
@@ -149,21 +95,7 @@ internal class AndroidProject(
     }
 
     override fun close() {
-        dir.deleteRecursively()
-    }
-
-    private fun findSdkDirFromLocalProperties(): String? {
-        var current: File? = File("").absoluteFile
-        while (current != null) {
-            val localProps = current.resolve("local.properties")
-            if (localProps.exists()) {
-                val props = java.util.Properties().apply { localProps.reader().use { load(it) } }
-                val sdkDir = props.getProperty("sdk.dir")
-                if (sdkDir != null) return sdkDir
-            }
-            current = current.parentFile
-        }
-        return null
+        scaffold.delete()
     }
 
     companion object {
