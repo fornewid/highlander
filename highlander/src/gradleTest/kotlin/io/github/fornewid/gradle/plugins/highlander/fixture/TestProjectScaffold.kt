@@ -13,7 +13,7 @@ import java.util.UUID
  */
 internal class TestProjectScaffold private constructor(val dir: File) {
 
-    fun writeSettings(rootName: String, includes: List<String>) {
+    fun writeSettings(rootName: String, vararg includes: String) {
         val text = buildString {
             append("""rootProject.name = "$rootName"""").append('\n')
             for (path in includes) append("include '$path'").append('\n')
@@ -29,7 +29,7 @@ internal class TestProjectScaffold private constructor(val dir: File) {
         val extraRepos = if (extraRepoUrls.isEmpty()) {
             ""
         } else {
-            "\n                    " + extraRepoUrls.joinToString(separator = "\n                    ") {
+            "\n        " + extraRepoUrls.joinToString(separator = "\n        ") {
                 "maven { url '${it.replace("\\", "/")}' }"
             }
         }
@@ -55,11 +55,6 @@ internal class TestProjectScaffold private constructor(val dir: File) {
         )
     }
 
-    fun readFile(relativePath: String): String? {
-        val file = dir.resolve(relativePath)
-        return if (file.exists()) file.readText() else null
-    }
-
     fun writeGradleProperties() {
         dir.resolve("gradle.properties").writeText(
             """
@@ -70,7 +65,8 @@ internal class TestProjectScaffold private constructor(val dir: File) {
     }
 
     fun writeLocalProperties() {
-        dir.resolve("local.properties").writeText("sdk.dir=${resolveAndroidHome()}")
+        val escaped = androidHome.replace("\\", "/")
+        dir.resolve("local.properties").writeText("sdk.dir=$escaped")
     }
 
     fun writeEmptyManifest(target: File) {
@@ -81,6 +77,11 @@ internal class TestProjectScaffold private constructor(val dir: File) {
             <manifest xmlns:android="http://schemas.android.com/apk/res/android" />
             """.trimIndent()
         )
+    }
+
+    fun readFile(relativePath: String): String? {
+        val file = dir.resolve(relativePath)
+        return if (file.exists()) file.readText() else null
     }
 
     fun delete() {
@@ -96,13 +97,13 @@ internal class TestProjectScaffold private constructor(val dir: File) {
             return TestProjectScaffold(dir)
         }
 
-        private val pluginJar: String by lazy {
+        internal val pluginJar: String by lazy {
             System.getProperty("pluginJar")
                 ?: error("pluginJar system property not set. Run via '../gradlew gradleTest'")
         }
 
-        private fun resolveAndroidHome(): String {
-            return System.getenv("ANDROID_HOME")
+        private val androidHome: String by lazy {
+            System.getenv("ANDROID_HOME")
                 ?: System.getenv("ANDROID_SDK_ROOT")
                 ?: findSdkDirFromLocalProperties()
                 ?: error("ANDROID_HOME or ANDROID_SDK_ROOT must be set")

@@ -22,7 +22,7 @@ internal class AndroidXValuesProject(
         val localRepo = dir.resolve("local-maven-repo").apply { mkdirs() }
         publishFakeAndroidXAar(localRepo)
 
-        scaffold.writeSettings("test-project", listOf(":app"))
+        scaffold.writeSettings("test-project", ":app")
         scaffold.writeRootBuildscript(extraRepoUrls = listOf(localRepo.absolutePath))
         scaffold.writeGradleProperties()
         scaffold.writeLocalProperties()

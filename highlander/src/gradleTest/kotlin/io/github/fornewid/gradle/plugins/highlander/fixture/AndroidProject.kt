@@ -13,7 +13,7 @@ internal class AndroidProject(
     val dir: File get() = scaffold.dir
 
     init {
-        scaffold.writeSettings("test-project", listOf(":app", ":module1"))
+        scaffold.writeSettings("test-project", ":app", ":module1")
         scaffold.writeRootBuildscript()
         scaffold.writeGradleProperties()
         scaffold.writeLocalProperties()
@@ -76,7 +76,7 @@ internal class AndroidProject(
             """.trimIndent()
         )
 
-        val module1SrcDir = module1Dir.resolve("src/main").apply { mkdirs() }
+        val module1SrcDir = module1Dir.resolve("src/main")
         scaffold.writeEmptyManifest(module1SrcDir.resolve("AndroidManifest.xml"))
 
         for ((path, content) in moduleResources) {
