@@ -109,6 +109,58 @@ internal class HighlanderPluginTest {
     }
 
     @Test
+    fun `baseline emits duplicate-safe for byte-identical resources from external deps`() {
+        // Two dependencies with identical-byte resources → classified as duplicate-safe.
+        // We use Unknown-origin sources (from files()-style local AAR) to avoid the
+        // app-module override promotion path.
+        AndroidProject(
+            appResources = mapOf("drawable/ic_app_only.xml" to "<app/>"),
+            moduleResources = mapOf("drawable/ic_same.xml" to "<vector/>"),
+        ).use { project ->
+            // Add a second source with identical byte content in :module1 and :app.
+            project.addAppResource("drawable/ic_same.xml", "<vector/>")
+
+            build(project, ":app:highlanderBaselineRelease")
+
+            val baseline = project.readFile("app/highlander/releaseResources.txt")!!
+            // App module is one source of the byte-identical duplicate, but
+            // duplicate-safe is not promoted to override.
+            assertThat(baseline).contains("# duplicate-safe")
+            assertThat(baseline).contains("drawable/ic_same")
+        }
+    }
+
+    @Test
+    fun `baseline emits override for app-module conflicts with divergent content`() {
+        AndroidProject(
+            appResources = mapOf("drawable/ic_same.xml" to "<vector/>"),
+            moduleResources = mapOf("drawable/ic_same.xml" to "<shape/>"),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+
+            val baseline = project.readFile("app/highlander/releaseResources.txt")!!
+            assertThat(baseline).contains("# override")
+            assertThat(baseline).contains("drawable/ic_same")
+        }
+    }
+
+    @Test
+    fun `guard fails with classification flip diff when conflict becomes duplicate-safe`() {
+        AndroidProject(
+            appResources = mapOf("drawable/ic_same.xml" to "<vector/>"),
+            moduleResources = mapOf("drawable/ic_same.xml" to "<shape/>"),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+            // Flip: make app's copy byte-identical to module's.
+            project.addAppResource("drawable/ic_same.xml", "<shape/>")
+
+            val result = buildAndFail(project, ":app:highlanderRelease")
+            assertThat(result.output).contains("drawable/ic_same")
+            assertThat(result.output).contains("override -> duplicate-safe")
+        }
+    }
+
+    @Test
     fun `no baseline file created when scan type disabled`() {
         val pluginConfig = """
             highlander {
