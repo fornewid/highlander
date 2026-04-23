@@ -6,6 +6,11 @@ internal class AndroidProject(
     private val pluginConfig: String = DEFAULT_PLUGIN_CONFIG,
     private val appResources: Map<String, String> = emptyMap(),
     private val moduleResources: Map<String, String> = emptyMap(),
+    /**
+     * Flavor names to declare under a single `env` dimension on the app module.
+     * Empty disables the flavor block and preserves single build-type variants.
+     */
+    private val flavors: List<String> = emptyList(),
 ) : AutoCloseable {
 
     private val scaffold: TestProjectScaffold = TestProjectScaffold.create()
@@ -17,6 +22,15 @@ internal class AndroidProject(
         scaffold.writeRootBuildscript()
         scaffold.writeGradleProperties()
         scaffold.writeLocalProperties()
+
+        val flavorsBlock = if (flavors.isEmpty()) "" else buildString {
+            append("flavorDimensions \"env\"\n")
+            append("    productFlavors {\n")
+            for (flavor in flavors) {
+                append("        $flavor { dimension \"env\" }\n")
+            }
+            append("    }")
+        }
 
         // app module
         val appDir = dir.resolve("app").apply { mkdirs() }
@@ -32,6 +46,7 @@ internal class AndroidProject(
                     minSdk 23
                     targetSdk 34
                 }
+                $flavorsBlock
             }
 
             dependencies {

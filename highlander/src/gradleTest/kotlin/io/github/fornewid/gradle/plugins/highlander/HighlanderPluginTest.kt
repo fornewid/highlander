@@ -67,6 +67,52 @@ internal class HighlanderPluginTest {
     }
 
     @Test
+    fun `baseline task works with flavored variant`() {
+        val pluginConfig = """
+            highlander {
+                configuration("devRelease")
+            }
+        """.trimIndent()
+
+        AndroidProject(
+            pluginConfig = pluginConfig,
+            appResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
+            moduleResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
+            flavors = listOf("dev", "prod"),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineDevRelease")
+
+            val baseline = project.readFile("app/highlander/devReleaseResources.txt")
+            assertThat(baseline).isNotNull()
+            assertThat(baseline).contains("drawable/ic_shared")
+            assertThat(baseline).contains(":app")
+            assertThat(baseline).contains(":module1")
+        }
+    }
+
+    @Test
+    fun `unmatched configuration error lists flavored variants`() {
+        val pluginConfig = """
+            highlander {
+                configuration("nonExistent")
+            }
+        """.trimIndent()
+
+        AndroidProject(
+            pluginConfig = pluginConfig,
+            flavors = listOf("dev", "prod"),
+        ).use { project ->
+            val result = buildAndFail(project, ":app:highlander")
+
+            assertThat(result.output).contains("could not resolve configuration \"nonExistent\"")
+            assertThat(result.output).contains("configuration(\"devRelease\")")
+            assertThat(result.output).contains("configuration(\"devDebug\")")
+            assertThat(result.output).contains("configuration(\"prodRelease\")")
+            assertThat(result.output).contains("configuration(\"prodDebug\")")
+        }
+    }
+
+    @Test
     fun `unmatched configuration fails with available variants`() {
         val pluginConfig = """
             highlander {
