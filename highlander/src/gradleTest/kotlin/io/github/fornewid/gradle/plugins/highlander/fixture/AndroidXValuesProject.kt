@@ -6,13 +6,28 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /**
- * A gradleTest fixture that publishes a synthetic AAR under the `androidx.testsample` group
+ * A gradleTest fixture that publishes one or more synthetic AARs under `androidx.*` groups
  * to a project-local maven repo. Used to exercise AndroidX-specific filtering paths without
  * depending on a live AndroidX release.
+ *
+ * Every AAR declares the same string resource key (`shared_string`) with a configurable
+ * value — tests can vary the number of AARs and whether the app itself declares the same
+ * key to pin filter semantics across scenarios.
  */
 internal class AndroidXValuesProject(
     private val excludeAndroidXValues: Boolean,
+    private val androidXArtifacts: List<AndroidXArtifact> = listOf(DEFAULT_ARTIFACT),
+    private val appDeclaresSharedString: Boolean = true,
 ) : AutoCloseable {
+
+    internal data class AndroidXArtifact(
+        val group: String,
+        val name: String,
+        val version: String,
+        val sharedValue: String,
+    ) {
+        val coordinates: String get() = "$group:$name:$version"
+    }
 
     private val scaffold: TestProjectScaffold = TestProjectScaffold.create()
 
@@ -20,7 +35,9 @@ internal class AndroidXValuesProject(
 
     init {
         val localRepo = dir.resolve("local-maven-repo").apply { mkdirs() }
-        publishFakeAndroidXAar(localRepo)
+        for (artifact in androidXArtifacts) {
+            publishAndroidXAar(localRepo, artifact)
+        }
 
         scaffold.writeSettings("test-project", ":app")
         scaffold.writeRootBuildscript(extraRepoUrls = listOf(localRepo.absolutePath))
@@ -28,6 +45,9 @@ internal class AndroidXValuesProject(
         scaffold.writeLocalProperties()
 
         val appDir = dir.resolve("app").apply { mkdirs() }
+        val dependenciesBlock = androidXArtifacts.joinToString(separator = "\n                ") {
+            "implementation '${it.coordinates}'"
+        }
         appDir.resolve("build.gradle").writeText(
             """
             apply plugin: 'com.android.application'
@@ -43,7 +63,7 @@ internal class AndroidXValuesProject(
             }
 
             dependencies {
-                implementation 'androidx.testsample:fake:1.0.0'
+                $dependenciesBlock
             }
 
             highlander {
@@ -71,15 +91,17 @@ internal class AndroidXValuesProject(
             """.trimIndent()
         )
 
-        val appStrings = appSrcDir.resolve("res/values/strings.xml")
-        appStrings.parentFile.mkdirs()
-        appStrings.writeText(
-            """
-            <resources>
-                <string name="shared_string">from-app</string>
-            </resources>
-            """.trimIndent()
-        )
+        if (appDeclaresSharedString) {
+            val appStrings = appSrcDir.resolve("res/values/strings.xml")
+            appStrings.parentFile.mkdirs()
+            appStrings.writeText(
+                """
+                <resources>
+                    <string name="shared_string">from-app</string>
+                </resources>
+                """.trimIndent()
+            )
+        }
     }
 
     fun readFile(relativePath: String): String? = scaffold.readFile(relativePath)
@@ -88,20 +110,19 @@ internal class AndroidXValuesProject(
         scaffold.delete()
     }
 
-    private fun publishFakeAndroidXAar(repoDir: File) {
-        val group = "androidx/testsample"
-        val artifact = "fake"
-        val version = "1.0.0"
-        val artifactDir = repoDir.resolve("$group/$artifact/$version").apply { mkdirs() }
+    private fun publishAndroidXAar(repoDir: File, artifact: AndroidXArtifact) {
+        val groupPath = artifact.group.replace('.', '/')
+        val artifactDir = repoDir.resolve("$groupPath/${artifact.name}/${artifact.version}")
+            .apply { mkdirs() }
 
-        val aarFile = artifactDir.resolve("$artifact-$version.aar")
+        val aarFile = artifactDir.resolve("${artifact.name}-${artifact.version}.aar")
         ZipOutputStream(aarFile.outputStream()).use { zip ->
             zip.putNextEntry(ZipEntry("AndroidManifest.xml"))
             zip.write(
                 """
                 <?xml version="1.0" encoding="utf-8"?>
                 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-                    package="androidx.testsample.fake" />
+                    package="${artifact.group}.${artifact.name.replace('-', '_')}" />
                 """.trimIndent().toByteArray()
             )
             zip.closeEntry()
@@ -120,25 +141,34 @@ internal class AndroidXValuesProject(
             zip.write(
                 """
                 <resources>
-                    <string name="shared_string">from-androidx</string>
+                    <string name="shared_string">${artifact.sharedValue}</string>
                 </resources>
                 """.trimIndent().toByteArray()
             )
             zip.closeEntry()
         }
 
-        val pomFile = artifactDir.resolve("$artifact-$version.pom")
+        val pomFile = artifactDir.resolve("${artifact.name}-${artifact.version}.pom")
         pomFile.writeText(
             """
             <?xml version="1.0" encoding="UTF-8"?>
             <project xmlns="http://maven.apache.org/POM/4.0.0">
                 <modelVersion>4.0.0</modelVersion>
-                <groupId>androidx.testsample</groupId>
-                <artifactId>fake</artifactId>
-                <version>1.0.0</version>
+                <groupId>${artifact.group}</groupId>
+                <artifactId>${artifact.name}</artifactId>
+                <version>${artifact.version}</version>
                 <packaging>aar</packaging>
             </project>
             """.trimIndent()
+        )
+    }
+
+    companion object {
+        val DEFAULT_ARTIFACT = AndroidXArtifact(
+            group = "androidx.testsample",
+            name = "fake",
+            version = "1.0.0",
+            sharedValue = "from-androidx",
         )
     }
 }
