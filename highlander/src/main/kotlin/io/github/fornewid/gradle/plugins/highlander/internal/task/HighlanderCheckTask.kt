@@ -250,7 +250,17 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         sources.addAll(resolveFromMapping(resArtifactMapping))
         addLocalDirs(sources, localResourceDirs)
         if (excludeAndroidXValues.get()) {
+            val excluded = sources.count { (_, origin) -> isAndroidXDependency(origin) }
             sources.removeAll { (_, origin) -> isAndroidXDependency(origin) }
+            val unknownKept = sources.count { (_, origin) -> origin is SourceOrigin.Unknown }
+            logger.info(
+                "Highlander values scan ({}): excluded {} androidx source(s), kept {} source(s) ({} unknown-origin). " +
+                    "Unknown-origin sources (files(), some composite builds) are not matched by the androidx filter.",
+                configurationName.get(),
+                excluded,
+                sources.size,
+                unknownKept,
+            )
         }
         return ValuesResourceScanner.scan(sources)
     }

@@ -140,7 +140,11 @@ Example with opt-in features:
 - **AndroidX noise reduction**: `excludeAndroidXValues` is `true` by default.
   Sources whose Gradle coordinates start with `androidx.` are filtered out of
   the values scan before duplicate detection. Set `excludeAndroidXValues =
-  false` to see the full set.
+  false` to see the full set. Run with `--info` to print how many AndroidX
+  sources were excluded and how many unknown-origin sources remain — unknown
+  origins (e.g. `files()` dependencies, some composite-build substitutions)
+  are not matched by the filter and require `excludeAndroidXValues = false`
+  for visibility.
 - **Classification flips are detected**: if an entry changes category
   (e.g., `conflict` → `duplicate-safe` after a dependency upgrade that makes
   bytes match), the guard fails with a `~ key (old -> new):` diff. Re-baseline

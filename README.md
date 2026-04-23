@@ -99,7 +99,7 @@ highlander {
 | `excludeAndroidXValues` | **`true`** | Filter out `androidx.*` sources from the values scan only |
 | `baselineDir` | `"highlander"` | Directory for baseline files |
 
-**Note on `excludeAndroidXValues`**: AndroidX components (Compose, Core, etc.) routinely share benign values declarations by design. Filtering them out keeps the values baseline signal-to-noise high. Set to `false` to include AndroidX entries. No effect unless `valuesResources = true`.
+**Note on `excludeAndroidXValues`**: AndroidX components (Compose, Core, etc.) routinely share benign values declarations by design. Filtering them out keeps the values baseline signal-to-noise high. Set to `false` to include AndroidX entries. No effect unless `valuesResources = true`. Run with `--info` to see how many AndroidX sources were excluded and how many unknown-origin sources remain (unknown-origin sources such as `files()` or some composite-build setups are not matched by the filter).
 
 **Note on values id-slot skip**: the values scan automatically skips empty-body `<item type="id" name="..."/>` (and the shorthand `<id name="..."/>`) declarations. AAPT2 treats these as weak `Id` values that merge across libraries without runtime conflict, so reporting them would be false-positive noise.
 
