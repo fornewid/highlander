@@ -101,10 +101,10 @@ This is a Gradle plugin (`io.github.fornewid.highlander`) that detects duplicate
 
 Update these files in order:
 
-1. `internal/scanner/XxxScanner.kt` — Implement `fun scan(sources: List<Pair<File, SourceOrigin>>): List<DuplicateEntry>`. If byte-level comparison is meaningful, hash via `ContentHasher.sha256Hex(file)` and emit `DUPLICATE_SAFE` when all source hashes match, `CONFLICT` otherwise.
+1. `internal/scanner/XxxScanner.kt` — Implement `fun scan(sources: List<Pair<File, SourceOrigin>>): List<DuplicateEntry>`. The `File` in each pair may be a directory (local project sources passed through `addLocalDirs` — e.g. `res/`, `assets/`, `jniLibs/`) or a leaf file (extracted dependency artifacts such as a classes jar); scan entries typically walk the directory when applicable (see `ResourceScanner.collectResources` and `AssetScanner.collectAssets` for reference). If byte-level comparison is meaningful, hash via `ContentHasher.sha256Hex(file)` and emit `DUPLICATE_SAFE` when all source hashes match, `CONFLICT` otherwise.
 2. `HighlanderConfiguration.kt` — Add a boolean flag (default `true` for low-noise scans, `false` for opt-in).
 3. `internal/AndroidVariantHandler.kt` — Wire the config flag to `HighlanderCheckTask` inputs and obtain the artifact view for the appropriate AGP artifact type if needed (see `ARTIFACT_TYPE_*` constants).
-4. `internal/task/HighlanderCheckTask.kt` — Add `@get:Input` / `@get:InputFiles` properties and a `scanXxx()` method invoked from `execute()`.
+4. `internal/task/HighlanderCheckTask.kt` — Add `abstract val` properties using lazy types (`Property<T>` for scalars, `ListProperty` / `MapProperty` for collections, `FileCollection` / `DirectoryProperty` for file inputs) and a `scanXxx()` method invoked from `execute()`. Match the existing annotation conventions: `@get:Input` for scalars, `@get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)` for file collections so build-cache relocation works correctly.
 5. `internal/BaselineFormat.kt` — No changes needed; all scans share the same tag-based format.
 6. Unit tests under `src/test/.../scanner/XxxScannerTest.kt` covering identical/divergent/mixed duplicates and classification assertions.
 7. gradleTest end-to-end case under `HighlanderPluginTest.kt`.
