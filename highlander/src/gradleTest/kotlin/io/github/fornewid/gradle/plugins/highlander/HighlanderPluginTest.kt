@@ -96,6 +96,66 @@ internal class HighlanderPluginTest {
     }
 
     @Test
+    fun `duplicate only between two androidx libs disappears entirely when excluded`() {
+        val artifacts = listOf(
+            AndroidXValuesProject.AndroidXArtifact(
+                group = "androidx.testsample",
+                name = "liba",
+                version = "1.0.0",
+                sharedValue = "from-lib-a",
+            ),
+            AndroidXValuesProject.AndroidXArtifact(
+                group = "androidx.testsample",
+                name = "libb",
+                version = "1.0.0",
+                sharedValue = "from-lib-b",
+            ),
+        )
+        AndroidXValuesProject(
+            excludeAndroidXValues = true,
+            androidXArtifacts = artifacts,
+            appDeclaresSharedString = false,
+        ).use { project ->
+            Builder.build(project.dir, ":app:highlanderBaselineRelease")
+
+            // Both sources are androidx → both filtered → no duplicate → baseline file empty.
+            val baseline = project.readFile("app/highlander/releaseValues.txt")
+            assertThat(baseline).isEqualTo("")
+        }
+    }
+
+    @Test
+    fun `two androidx libs plus app entry is dropped when excluded leaves only app source`() {
+        val artifacts = listOf(
+            AndroidXValuesProject.AndroidXArtifact(
+                group = "androidx.testsample",
+                name = "liba",
+                version = "1.0.0",
+                sharedValue = "from-lib-a",
+            ),
+            AndroidXValuesProject.AndroidXArtifact(
+                group = "androidx.testsample",
+                name = "libb",
+                version = "1.0.0",
+                sharedValue = "from-lib-b",
+            ),
+        )
+        AndroidXValuesProject(
+            excludeAndroidXValues = true,
+            androidXArtifacts = artifacts,
+            appDeclaresSharedString = true,
+        ).use { project ->
+            Builder.build(project.dir, ":app:highlanderBaselineRelease")
+
+            // Two androidx sources are filtered; only :app remains for the key → not a
+            // duplicate → baseline file empty. This pins the "drops sources, not entries"
+            // semantic documented on excludeAndroidXValues.
+            val baseline = project.readFile("app/highlander/releaseValues.txt")
+            assertThat(baseline).isEqualTo("")
+        }
+    }
+
+    @Test
     fun `values scan emits diagnostic info log when excludeAndroidXValues is true`() {
         AndroidXValuesProject(excludeAndroidXValues = true).use { project ->
             val result = Builder.build(project.dir, ":app:highlanderBaselineRelease", "--info")
