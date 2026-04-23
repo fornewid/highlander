@@ -1,6 +1,7 @@
 package io.github.fornewid.gradle.plugins.highlander.internal.scanner
 
 import com.google.common.truth.Truth.assertThat
+import io.github.fornewid.gradle.plugins.highlander.internal.models.Classification
 import io.github.fornewid.gradle.plugins.highlander.internal.models.SourceOrigin
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -64,6 +65,34 @@ internal class AssetScannerTest {
         ))
 
         assertThat(duplicates).isEmpty()
+    }
+
+    @Test
+    fun `byte-identical duplicates are classified as duplicate-safe`() {
+        val assetA = createAssetDir("assetA", mapOf("config.json" to """{"v":1}"""))
+        val assetB = createAssetDir("assetB", mapOf("config.json" to """{"v":1}"""))
+
+        val duplicates = AssetScanner.scan(listOf(
+            assetA to SourceOrigin.ExternalDependency("com.x:lib:1.0"),
+            assetB to SourceOrigin.ExternalDependency("com.y:lib:1.0"),
+        ))
+
+        assertThat(duplicates).hasSize(1)
+        assertThat(duplicates[0].classification).isEqualTo(Classification.DUPLICATE_SAFE)
+    }
+
+    @Test
+    fun `divergent content duplicates are classified as conflict`() {
+        val assetA = createAssetDir("assetA", mapOf("config.json" to """{"v":1}"""))
+        val assetB = createAssetDir("assetB", mapOf("config.json" to """{"v":2}"""))
+
+        val duplicates = AssetScanner.scan(listOf(
+            assetA to SourceOrigin.ExternalDependency("com.x:lib:1.0"),
+            assetB to SourceOrigin.ExternalDependency("com.y:lib:1.0"),
+        ))
+
+        assertThat(duplicates).hasSize(1)
+        assertThat(duplicates[0].classification).isEqualTo(Classification.CONFLICT)
     }
 
     private fun createAssetDir(name: String, files: Map<String, String>): File {

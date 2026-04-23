@@ -2,6 +2,7 @@ package io.github.fornewid.gradle.plugins.highlander.internal.task
 
 import io.github.fornewid.gradle.plugins.highlander.HighlanderPlugin
 import io.github.fornewid.gradle.plugins.highlander.internal.BaselineFormat
+import io.github.fornewid.gradle.plugins.highlander.internal.models.Classification
 import io.github.fornewid.gradle.plugins.highlander.internal.models.DuplicateEntry
 import io.github.fornewid.gradle.plugins.highlander.internal.models.SourceOrigin
 import io.github.fornewid.gradle.plugins.highlander.internal.scanner.AssetScanner
@@ -156,7 +157,8 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         current: List<DuplicateEntry>,
         isBaseline: Boolean,
     ): String? {
-        val currentContent = BaselineFormat.serialize(current, appModulePath = projectPath.get())
+        val promoted = current.map { promoteAppOverride(it) }
+        val currentContent = BaselineFormat.serialize(promoted)
 
         if (isBaseline) {
             file.writeText(currentContent)
@@ -178,21 +180,39 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         if (currentContent == expectedContent) return null
 
         val expected = BaselineFormat.parse(expectedContent)
-        val added = current.filter { it !in expected }
-        val removed = expected.filter { it !in current }
+        val added = promoted.filter { it !in expected }
+        val removed = expected.filter { it !in promoted }
 
         if (added.isEmpty() && removed.isEmpty()) return null
 
+        // Same key present in both sides = classification flip. Render those as
+        // a single `~` line with the tag transition so the common "re-baseline
+        // after upgrade" case is readable.
+        val addedByKey = added.associateBy { it.resourceKey }
+        val removedByKey = removed.associateBy { it.resourceKey }
+        val flippedKeys = addedByKey.keys intersect removedByKey.keys
+        val pureRemoved = removed.filter { it.resourceKey !in flippedKeys }
+        val pureAdded = added.filter { it.resourceKey !in flippedKeys }
+
         return buildString {
             appendLine("=== $label ===")
-            for (entry in removed) {
+            for (key in flippedKeys.sorted()) {
+                val before = removedByKey.getValue(key)
+                val after = addedByKey.getValue(key)
+                appendLine("~ $key (${before.classification.tag} -> ${after.classification.tag}):")
+                for (source in after.sources) {
+                    val ext = after.extensions[source.displayName]?.let { " ($it)" } ?: ""
+                    appendLine("    - ${source.displayName}$ext")
+                }
+            }
+            for (entry in pureRemoved) {
                 appendLine("- ${entry.resourceKey}:")
                 for (source in entry.sources) {
                     val ext = entry.extensions[source.displayName]?.let { " ($it)" } ?: ""
                     appendLine("-   - ${source.displayName}$ext")
                 }
             }
-            for (entry in added) {
+            for (entry in pureAdded) {
                 appendLine("+ ${entry.resourceKey}:")
                 for (source in entry.sources) {
                     val ext = entry.extensions[source.displayName]?.let { " ($it)" } ?: ""
@@ -200,6 +220,22 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
                 }
             }
         }
+    }
+
+    // Scanners emit CONFLICT or DUPLICATE_SAFE based on byte comparison. Promote
+    // CONFLICT to OVERRIDE when the app module itself is one of the sources —
+    // that context is only available to the task. DUPLICATE_SAFE is left alone:
+    // a byte-identical file in the app module is still not a real conflict.
+    private fun promoteAppOverride(entry: DuplicateEntry): DuplicateEntry {
+        if (entry.classification != Classification.CONFLICT) return entry
+        val appModule = SourceOrigin.Module(projectPath.get())
+        if (appModule !in entry.sources) return entry
+        return DuplicateEntry(
+            resourceKey = entry.resourceKey,
+            sources = entry.sources,
+            extensions = entry.extensions,
+            classification = Classification.OVERRIDE,
+        )
     }
 
     private fun scanRes(): List<DuplicateEntry> {
