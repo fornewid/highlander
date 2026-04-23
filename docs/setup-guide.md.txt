@@ -1,0 +1,213 @@
+# Highlander — AI Agent Setup Guide
+
+This guide helps AI agents (Claude Code, GitHub Copilot, Gemini, Cursor, etc.)
+correctly install and configure the Highlander Gradle plugin.
+
+## What is Highlander?
+
+A Gradle plugin that detects duplicate resources, assets, classes, and native
+libraries across an Android app's dependencies. It saves a baseline of the
+current duplicates and fails the build when new ones appear — catching silent
+UI bugs, Dex merge failures, and runtime `UnsatisfiedLinkError` before they ship.
+
+- Plugin ID: `io.github.fornewid.highlander`
+- Maven Central: `io.github.fornewid.highlander:highlander`
+- Minimum: AGP 8.0.0+, Gradle 8.0+
+
+## Step 1: Apply the plugin
+
+Add to the **application module's** `build.gradle.kts` (not the root project, not a library module):
+
+Using Version Catalog (`libs.versions.toml`):
+
+    [plugins]
+    highlander = { id = "io.github.fornewid.highlander", version = "<latest-version>" }
+
+    // app/build.gradle.kts
+    plugins {
+        id("com.android.application")
+        alias(libs.plugins.highlander)
+    }
+
+    highlander {
+        configuration("release")
+    }
+
+Or directly:
+
+    plugins {
+        id("com.android.application")
+        id("io.github.fornewid.highlander") version "<latest-version>"
+    }
+
+    highlander {
+        configuration("release")
+    }
+
+**AI Agent**: The minimal setup is just `configuration("release")` with no
+additional properties. Reasonable defaults are already applied. Do NOT add
+`nativeLibs = true`, `valuesResources = true`, `classes = true`, or similar
+unless the user explicitly requests them. Do NOT apply this plugin in the root
+`build.gradle.kts` — it must be applied to each Android application module.
+Library modules (`com.android.library`) are not supported because duplicates
+are only meaningful at the final-app merge level.
+
+The variant name passed to `configuration(...)` must match an existing build
+variant (e.g., `"release"`, `"debug"`, or a flavor variant like `"devRelease"`).
+If the name doesn't match, the build fails at task configuration time with the
+valid variant list printed out.
+
+## Step 2: Generate a baseline
+
+    ./gradlew :app:highlanderBaseline
+
+This creates per-variant baseline files in `<module>/highlander/`:
+
+    highlander/
+    ├── releaseResources.txt
+    ├── releaseAssets.txt
+    ├── releaseNativeLibs.txt     # only if nativeLibs = true
+    ├── releaseValues.txt          # only if valuesResources = true
+    └── releaseClasses.txt         # only if classes = true
+
+These files should be committed to version control.
+
+## Step 3: Detect changes
+
+    ./gradlew :app:highlander
+
+If duplicates change (new entry, removed entry, or classification flip), the
+build fails with a diff. To accept the changes, re-run
+`./gradlew :app:highlanderBaseline` (or the variant-specific
+`:app:highlanderBaselineRelease`).
+
+The `highlander` task is automatically wired into `./gradlew check`, so CI
+pipelines that run `check` will verify the baseline.
+
+**AI Agent**: Always run `highlanderBaseline` explicitly during initial setup
+instead of letting it happen as a side effect.
+
+## Default behavior
+
+The plugin scans the following by default (no configuration needed):
+
+- File-based resources (`res/drawable`, `res/layout`, `res/mipmap`, etc.)
+- Assets (`assets/**`)
+
+Classification (emitted as `# <tag>` before each entry in the baseline):
+
+- `# override` — the application module is one of the sources. AAPT's
+  "last wins" rule means the app's copy takes effect.
+- `# conflict` — only external dependencies are the sources and their file
+  bytes differ. AGP silently picks one by priority order; behavior can change.
+- `# duplicate-safe` — every source has byte-identical content. AAPT merges
+  deterministically; no runtime difference.
+
+Only `resources` and `assets` scans classify as `# duplicate-safe`. Classes
+and native libraries always report as `# override` or `# conflict`.
+
+**AI Agent**: These defaults are ALREADY enabled. You MUST NOT include
+`resources = true` or `assets = true` in the configuration block — not even
+for "explicit clarity." If the user asks to "scan drawables" or "scan
+assets," the correct answer is that they are scanned by default.
+
+## Optional features (opt-in)
+
+These are disabled by default. Only add them when the user asks:
+
+| Property | Description |
+|----------|-------------|
+| `nativeLibs = true` | Detect duplicate `.so` files per ABI (`arm64-v8a/libfoo.so` etc.) |
+| `valuesResources = true` | Detect duplicate `values/` XML entries (strings, colors, styles, ids) |
+| `classes = true` | Detect duplicate Java/Kotlin classes across dependency JARs/AARs |
+
+Example with opt-in features:
+
+    highlander {
+        configuration("release") {
+            nativeLibs = true
+            classes = true
+        }
+    }
+
+## Important notes
+
+- **Values scan filtering**: the `valuesResources` scan automatically skips
+  empty-body `<item type="id" name="..."/>` (and the `<id name=".."/>`
+  shorthand) declarations. AAPT2 treats these as weak `Id` values that merge
+  across libraries without runtime conflict, so reporting them as duplicates
+  would be false-positive noise.
+- **AndroidX noise reduction**: `excludeAndroidXValues` is `true` by default.
+  Sources whose Gradle coordinates start with `androidx.` are filtered out of
+  the values scan before duplicate detection. Set `excludeAndroidXValues =
+  false` to see the full set.
+- **Classification flips are detected**: if an entry changes category
+  (e.g., `conflict` → `duplicate-safe` after a dependency upgrade that makes
+  bytes match), the guard fails with a `~ key (old -> new):` diff. Re-baseline
+  to accept.
+- **Re-baseline per variant**: if you only need to accept one variant's
+  changes, use `:app:highlanderBaselineRelease` rather than the full
+  `highlanderBaseline`.
+
+## Filtering options
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `excludeAndroidXValues` | `true` | Skip `androidx.*` sources in the values scan only |
+
+**AI Agent**: Do NOT set `excludeAndroidXValues = false` unless the user
+explicitly asks to include AndroidX entries in the values baseline. This flag
+has no effect when `valuesResources = false` (default).
+
+## Configuration property names
+
+Use the exact Kotlin property names listed below. Do NOT use abbreviations or
+alternative names.
+
+| Correct | Wrong |
+|---------|-------|
+| `resources` | `res`, `resource` |
+| `valuesResources` | `values`, `valuesRes` |
+| `nativeLibs` | `so`, `native`, `nativeLibraries` |
+| `assets` | `asset` |
+| `classes` | `jars`, `classFiles` |
+| `excludeAndroidXValues` | `excludeAndroidx`, `skipAndroidX` |
+| `baselineDir` | `baseline`, `baselineDirectory` |
+
+## Common mistakes to avoid
+
+**AI Agent**: Pay special attention to these:
+
+1. Do NOT add properties to `configuration()` unless the user asks. `resources`
+   and `assets` are already on; `nativeLibs`, `valuesResources`, `classes` are
+   intentionally off by default because they produce more noise than value for
+   most projects.
+2. Do NOT apply the plugin in a library module (`com.android.library`) or in
+   the root `build.gradle.kts`. It only works on `com.android.application`.
+3. Baseline files under `<module>/highlander/` should be committed to version
+   control.
+4. Task names are per-variant: `highlanderBaselineRelease`,
+   `highlanderDebug`, etc. The umbrella `highlanderBaseline` and `highlander`
+   run all declared variants.
+5. When users report "an entry disappeared from the baseline after upgrading,"
+   check whether it was an empty `<item type="id"/>` (now skipped in the values
+   scan) or whether the new `# duplicate-safe` classification applies — both
+   are intentional noise-reduction behaviors, not bugs.
+6. `excludeAndroidXValues = true` is the default behavior — users who want
+   AndroidX values duplicates in the baseline must explicitly opt out.
+
+## Not tracked
+
+- Classification (`duplicate-safe`) is only computed for `resources` and
+  `assets`. `classes` and `nativeLibs` entries always classify as `conflict`
+  or `override`, never `duplicate-safe`, even when byte-identical.
+- Values-scan duplicates do not use file-hash classification (XML entries are
+  compared by resource key, not by file bytes).
+- `R.class`, `R$*.class`, `BuildConfig.class`, `BuildConfig$*.class`, and
+  `module-info.class` are excluded from the classes scan.
+
+## Links
+
+- GitHub: https://github.com/fornewid/highlander
+- Maven Central: https://central.sonatype.com/artifact/io.github.fornewid.highlander/highlander
+- Gradle Plugin Portal: https://plugins.gradle.org/plugin/io.github.fornewid.highlander
