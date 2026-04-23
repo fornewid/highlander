@@ -58,8 +58,11 @@ internal object BaselineFormat {
                 line.isBlank() -> continue
                 line.startsWith("#") -> {
                     val match = TAG_LINE.matchEntire(line)
-                    if (match != null) {
-                        pendingClassification = Classification.fromTag(match.groupValues[1])
+                    pendingClassification = if (match != null) {
+                        Classification.fromTag(match.groupValues[1])
+                    } else {
+                        // Non-tag comment — don't let a stale pending tag leak to the next entry.
+                        Classification.CONFLICT
                     }
                 }
                 line.endsWith(":") && !line.startsWith("  ") -> {

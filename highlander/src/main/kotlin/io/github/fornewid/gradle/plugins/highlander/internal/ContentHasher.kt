@@ -14,7 +14,7 @@ internal object ContentHasher {
      */
     fun sha256Hex(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().buffered(BUFFER_SIZE).use { input ->
+        file.inputStream().use { input ->
             DigestInputStream(input, digest).use { stream ->
                 val buffer = ByteArray(BUFFER_SIZE)
                 while (stream.read(buffer) != -1) {
@@ -22,10 +22,10 @@ internal object ContentHasher {
                 }
             }
         }
-        return digest.digest().toHexString()
+        return digest.digest().toHex()
     }
 
-    private fun ByteArray.toHexString(): String {
+    private fun ByteArray.toHex(): String {
         val sb = StringBuilder(size * 2)
         for (b in this) {
             sb.append(HEX[(b.toInt() ushr 4) and 0x0F])

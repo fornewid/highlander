@@ -172,6 +172,24 @@ internal class BaselineFormatTest {
     }
 
     @Test
+    fun `non-tag comment line does not leak pending classification`() {
+        // A generic comment appearing after a tag must reset the pending state
+        // so the following entry falls back to CONFLICT, not the leaked tag.
+        val content = """
+            # duplicate-safe
+            # note: just a free-form comment
+            drawable/a:
+              - :app
+              - :module1
+        """.trimIndent()
+
+        val parsed = BaselineFormat.parse(content)
+
+        assertThat(parsed).hasSize(1)
+        assertThat(parsed[0].classification).isEqualTo(Classification.CONFLICT)
+    }
+
+    @Test
     fun `classification affects equality`() {
         val a = DuplicateEntry(
             "drawable/ic_close",
