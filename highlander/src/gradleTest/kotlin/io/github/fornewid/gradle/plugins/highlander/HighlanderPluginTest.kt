@@ -96,6 +96,16 @@ internal class HighlanderPluginTest {
     }
 
     @Test
+    fun `values scan emits diagnostic info log when excludeAndroidXValues is true`() {
+        AndroidXValuesProject(excludeAndroidXValues = true).use { project ->
+            val result = Builder.build(project.dir, ":app:highlanderBaselineRelease", "--info")
+
+            assertThat(result.output).contains("Highlander values scan")
+            assertThat(result.output).contains("excluded 1 androidx source")
+        }
+    }
+
+    @Test
     fun `excludeAndroidXValues false keeps androidx values duplicates in baseline`() {
         AndroidXValuesProject(excludeAndroidXValues = false).use { project ->
             Builder.build(project.dir, ":app:highlanderBaselineRelease")
