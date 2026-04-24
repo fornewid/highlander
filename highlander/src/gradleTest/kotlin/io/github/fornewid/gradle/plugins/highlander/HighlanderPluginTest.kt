@@ -258,8 +258,6 @@ internal class HighlanderPluginTest {
         val pluginConfig = """
             highlander {
                 configuration("release") {
-                    resources = true
-                    nativeLibs = false
                     assets = false
                     skipContentIdenticalDuplicates = false
                 }
@@ -300,8 +298,6 @@ internal class HighlanderPluginTest {
         val pluginConfig = """
             highlander {
                 configuration("release") {
-                    resources = true
-                    nativeLibs = false
                     assets = false
                     skipContentIdenticalDuplicates = false
                 }
