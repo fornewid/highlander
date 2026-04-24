@@ -45,4 +45,22 @@ public open class HighlanderConfiguration @Inject constructor(
 
     /** Scan for duplicate Java/Kotlin classes across dependency JARs/AARs */
     public var classes: Boolean = false
+
+    /**
+     * Skip byte-identical duplicates from the baseline entirely. Enabled by default.
+     *
+     * When true, entries classified as `DUPLICATE_SAFE` by the resource and asset scans
+     * (every source carries the same file bytes, so AAPT merges deterministically) are
+     * omitted from the baseline file. The result is a compact baseline that contains
+     * only entries that require review — app overrides and real conflicts.
+     *
+     * Set to `false` to retain `# duplicate-safe` entries in the baseline. This keeps a
+     * historical record of byte-identical duplicates so they can be inspected alongside
+     * real conflicts; drift where two libraries used to match but no longer do is still
+     * surfaced either way (the post-change entry appears as a new `# conflict`).
+     *
+     * Only the resource and asset scans emit `DUPLICATE_SAFE`, so the flag has no effect
+     * on native-libs, values, or classes scans.
+     */
+    public var skipContentIdenticalDuplicates: Boolean = true
 }

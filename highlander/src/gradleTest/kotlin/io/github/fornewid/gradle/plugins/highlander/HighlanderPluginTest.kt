@@ -12,9 +12,11 @@ internal class HighlanderPluginTest {
 
     @Test
     fun `baseline task creates baseline file`() {
+        // Divergent content so the duplicate is recorded (not dropped by the default
+        // skipContentIdenticalDuplicates = true).
         AndroidProject(
             appResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
-            moduleResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
+            moduleResources = mapOf("drawable/ic_shared.xml" to "<shape/>"),
         ).use { project ->
             build(project, ":app:highlanderBaselineRelease")
 
@@ -30,7 +32,7 @@ internal class HighlanderPluginTest {
     fun `guard task passes when baseline matches`() {
         AndroidProject(
             appResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
-            moduleResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
+            moduleResources = mapOf("drawable/ic_shared.xml" to "<shape/>"),
         ).use { project ->
             build(project, ":app:highlanderBaselineRelease")
             // Should succeed without error
@@ -42,10 +44,11 @@ internal class HighlanderPluginTest {
     fun `guard task fails when new duplicate appears`() {
         AndroidProject(
             appResources = mapOf("drawable/ic_app.xml" to "<vector/>"),
-            moduleResources = mapOf("drawable/ic_module.xml" to "<vector/>"),
+            moduleResources = mapOf("drawable/ic_module.xml" to "<shape/>"),
         ).use { project ->
             build(project, ":app:highlanderBaselineRelease")
 
+            // Add a divergent-content duplicate so it is not dropped as duplicate-safe.
             project.addAppResource("drawable/ic_module.xml", "<vector/>")
 
             val result = buildAndFail(project, ":app:highlanderRelease")
@@ -76,8 +79,10 @@ internal class HighlanderPluginTest {
 
         AndroidProject(
             pluginConfig = pluginConfig,
+            // Divergent content so the duplicate survives the default
+            // skipContentIdenticalDuplicates = true filter.
             appResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
-            moduleResources = mapOf("drawable/ic_shared.xml" to "<vector/>"),
+            moduleResources = mapOf("drawable/ic_shared.xml" to "<shape/>"),
             flavors = listOf("dev", "prod"),
         ).use { project ->
             build(project, ":app:highlanderBaselineDevRelease")
@@ -225,24 +230,52 @@ internal class HighlanderPluginTest {
     }
 
     @Test
-    fun `baseline emits duplicate-safe for byte-identical resources from external deps`() {
-        // Two dependencies with identical-byte resources → classified as duplicate-safe.
-        // We use Unknown-origin sources (from files()-style local AAR) to avoid the
-        // app-module override promotion path.
+    fun `skipContentIdenticalDuplicates default drops duplicate-safe entries from baseline`() {
         AndroidProject(
-            appResources = mapOf("drawable/ic_app_only.xml" to "<app/>"),
-            moduleResources = mapOf("drawable/ic_same.xml" to "<vector/>"),
+            appResources = mapOf(
+                "drawable/ic_safe.xml" to "<vector/>",
+                "drawable/ic_conflict.xml" to "<vector/>",
+            ),
+            moduleResources = mapOf(
+                "drawable/ic_safe.xml" to "<vector/>",
+                "drawable/ic_conflict.xml" to "<shape/>",
+            ),
         ).use { project ->
-            // Add a second source with identical byte content in :module1 and :app.
-            project.addAppResource("drawable/ic_same.xml", "<vector/>")
-
             build(project, ":app:highlanderBaselineRelease")
 
             val baseline = project.readFile("app/highlander/releaseResources.txt")!!
-            // App module is one source of the byte-identical duplicate, but
-            // duplicate-safe is not promoted to override.
+            // Divergent content → CONFLICT promoted to OVERRIDE (app in sources).
+            assertThat(baseline).contains("# override")
+            assertThat(baseline).contains("drawable/ic_conflict")
+            // Byte-identical duplicate is filtered out by default.
+            assertThat(baseline).doesNotContain("# duplicate-safe")
+            assertThat(baseline).doesNotContain("drawable/ic_safe")
+        }
+    }
+
+    @Test
+    fun `skipContentIdenticalDuplicates false retains duplicate-safe entries`() {
+        val pluginConfig = """
+            highlander {
+                configuration("release") {
+                    resources = true
+                    nativeLibs = false
+                    assets = false
+                    skipContentIdenticalDuplicates = false
+                }
+            }
+        """.trimIndent()
+
+        AndroidProject(
+            pluginConfig = pluginConfig,
+            appResources = mapOf("drawable/ic_safe.xml" to "<vector/>"),
+            moduleResources = mapOf("drawable/ic_safe.xml" to "<vector/>"),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+
+            val baseline = project.readFile("app/highlander/releaseResources.txt")!!
             assertThat(baseline).contains("# duplicate-safe")
-            assertThat(baseline).contains("drawable/ic_same")
+            assertThat(baseline).contains("drawable/ic_safe")
         }
     }
 
@@ -262,7 +295,21 @@ internal class HighlanderPluginTest {
 
     @Test
     fun `guard fails with classification flip diff when conflict becomes duplicate-safe`() {
+        // Opt out of the default so duplicate-safe entries stay in the baseline and
+        // the flip can surface as `override -> duplicate-safe` instead of a bare removal.
+        val pluginConfig = """
+            highlander {
+                configuration("release") {
+                    resources = true
+                    nativeLibs = false
+                    assets = false
+                    skipContentIdenticalDuplicates = false
+                }
+            }
+        """.trimIndent()
+
         AndroidProject(
+            pluginConfig = pluginConfig,
             appResources = mapOf("drawable/ic_same.xml" to "<vector/>"),
             moduleResources = mapOf("drawable/ic_same.xml" to "<shape/>"),
         ).use { project ->
