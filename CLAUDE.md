@@ -76,8 +76,10 @@ This is a Gradle plugin (`io.github.fornewid.highlander`) that detects duplicate
 
 `HighlanderConfiguration` defaults:
 
-- **`true`**: `resources`, `assets`, `excludeAndroidXValues`
+- **`true`**: `resources`, `assets`, `excludeAndroidXValues`, `skipContentIdenticalDuplicates`
 - **`false`** (opt-in, noisier): `nativeLibs`, `valuesResources`, `classes`
+
+`skipContentIdenticalDuplicates = true` means `HighlanderCheckTask.processBaseline` drops entries classified as `DUPLICATE_SAFE` before serializing / comparing. The baseline therefore only contains `# override` and `# conflict` entries by default. Set the flag to `false` in tests that need to assert on `# duplicate-safe` output.
 
 ### Test Structure
 

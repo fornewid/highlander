@@ -137,6 +137,14 @@ Example with opt-in features:
   shorthand) declarations. AAPT2 treats these as weak `Id` values that merge
   across libraries without runtime conflict, so reporting them as duplicates
   would be false-positive noise.
+- **Compact baseline by default**: `skipContentIdenticalDuplicates` is `true` by
+  default. Entries classified as `duplicate-safe` (every source has the same
+  file bytes) are omitted from the baseline so it only contains actionable
+  entries. Set to `false` if you want a historical record of byte-identical
+  duplicates in the file. Only affects scans that emit `duplicate-safe`
+  (resource and asset). Drift where two libraries used to match but no longer
+  do is still surfaced either way — the post-change entry shows up as a new
+  `# conflict`.
 - **AndroidX noise reduction**: `excludeAndroidXValues` is `true` by default.
   Sources whose Gradle coordinates start with `androidx.` are filtered out of
   the values scan before duplicate detection. Set `excludeAndroidXValues =
@@ -158,6 +166,7 @@ Example with opt-in features:
 | Property | Default | Description |
 |----------|---------|-------------|
 | `excludeAndroidXValues` | `true` | Skip `androidx.*` sources in the values scan only |
+| `skipContentIdenticalDuplicates` | `true` | Omit `duplicate-safe` entries (byte-identical duplicates) from the baseline |
 
 **AI Agent**: Do NOT set `excludeAndroidXValues = false` unless the user
 explicitly asks to include AndroidX entries in the values baseline. This flag
@@ -176,6 +185,7 @@ alternative names.
 | `assets` | `asset` |
 | `classes` | `jars`, `classFiles` |
 | `excludeAndroidXValues` | `excludeAndroidx`, `skipAndroidX` |
+| `skipContentIdenticalDuplicates` | `skipDuplicateSafe`, `hideDuplicateSafe` |
 | `baselineDir` | `baseline`, `baselineDirectory` |
 
 ## Common mistakes to avoid

@@ -77,12 +77,13 @@ highlander {
     baselineDir.set("highlander") // default
 
     configuration("release") {
-        resources = true               // Scan res/ file-based resources
-        assets = true                  // Scan assets/
-        nativeLibs = false             // Scan .so native libraries
-        valuesResources = false        // Scan values/ XML entries (strings, colors, etc.)
-        classes = false                // Scan Java/Kotlin classes in JARs/AARs
-        excludeAndroidXValues = true   // Drop androidx.* sources from the values scan
+        resources = true                        // Scan res/ file-based resources
+        assets = true                           // Scan assets/
+        nativeLibs = false                      // Scan .so native libraries
+        valuesResources = false                 // Scan values/ XML entries (strings, colors, etc.)
+        classes = false                         // Scan Java/Kotlin classes in JARs/AARs
+        excludeAndroidXValues = true            // Drop androidx.* sources from the values scan
+        skipContentIdenticalDuplicates = true   // Drop byte-identical duplicates from the baseline
     }
 }
 ```
@@ -97,11 +98,14 @@ highlander {
 | `valuesResources` | `false` | Detect duplicate values entries (`string`, `color`, `dimen`, etc.) |
 | `classes` | `false` | Detect duplicate Java/Kotlin classes across dependency JARs/AARs |
 | `excludeAndroidXValues` | **`true`** | Filter out `androidx.*` sources from the values scan only |
+| `skipContentIdenticalDuplicates` | **`true`** | Omit byte-identical duplicates (classified `duplicate-safe`) from the baseline |
 | `baselineDir` | `"highlander"` | Directory for baseline files |
 
 **Note on `excludeAndroidXValues`**: AndroidX components (Compose, Core, etc.) routinely share benign values declarations by design. Filtering them out keeps the values baseline signal-to-noise high. Set to `false` to include AndroidX entries. No effect unless `valuesResources = true`. Run with `--info` to see how many AndroidX sources were excluded and how many unknown-origin sources remain (unknown-origin sources such as `files()` or some composite-build setups are not matched by the filter).
 
 **Note on values id-slot skip**: the values scan automatically skips empty-body `<item type="id" name="..."/>` (and the shorthand `<id name="..."/>`) declarations. AAPT2 treats these as weak `Id` values that merge across libraries without runtime conflict, so reporting them would be false-positive noise.
+
+**Note on `skipContentIdenticalDuplicates`**: enabled by default to keep the baseline compact — only entries that need review (`# override`, `# conflict`) are persisted. Divergent-content conflicts that used to be byte-identical still surface the moment they diverge (the new `# conflict` entry appears in the diff). Set to `false` to retain `# duplicate-safe` lines in the baseline if you want a historical record of benign duplicates. Only affects scans that classify as `duplicate-safe` today (`resources`, `assets`).
 
 ## Baseline Files
 

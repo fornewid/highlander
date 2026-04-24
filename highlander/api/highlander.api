@@ -7,12 +7,14 @@ public class io/github/fornewid/gradle/plugins/highlander/HighlanderConfiguratio
 	public fun getName ()Ljava/lang/String;
 	public final fun getNativeLibs ()Z
 	public final fun getResources ()Z
+	public final fun getSkipContentIdenticalDuplicates ()Z
 	public final fun getValuesResources ()Z
 	public final fun setAssets (Z)V
 	public final fun setClasses (Z)V
 	public final fun setExcludeAndroidXValues (Z)V
 	public final fun setNativeLibs (Z)V
 	public final fun setResources (Z)V
+	public final fun setSkipContentIdenticalDuplicates (Z)V
 	public final fun setValuesResources (Z)V
 }
 

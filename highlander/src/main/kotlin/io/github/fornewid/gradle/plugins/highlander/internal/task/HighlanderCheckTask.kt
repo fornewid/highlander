@@ -44,6 +44,7 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
     @get:Input abstract val scanAssets: Property<Boolean>
     @get:Input abstract val scanClasses: Property<Boolean>
     @get:Input abstract val excludeAndroidXValues: Property<Boolean>
+    @get:Input abstract val skipContentIdenticalDuplicates: Property<Boolean>
 
     @get:Internal abstract val baselineDir: DirectoryProperty
     @get:Internal abstract val projectDir: DirectoryProperty
@@ -157,7 +158,12 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         current: List<DuplicateEntry>,
         isBaseline: Boolean,
     ): String? {
-        val promoted = current.map { promoteAppOverride(it) }
+        val filtered = if (skipContentIdenticalDuplicates.get()) {
+            current.filter { it.classification != Classification.DUPLICATE_SAFE }
+        } else {
+            current
+        }
+        val promoted = filtered.map { promoteAppOverride(it) }
         val currentContent = BaselineFormat.serialize(promoted)
 
         if (isBaseline) {
