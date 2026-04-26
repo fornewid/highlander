@@ -173,6 +173,13 @@ If a duplicate's classification changes (e.g. a dependency upgrade makes bytes m
 
 Re-run `highlanderBaseline` to accept the transition.
 
+## Investigating duplicates
+
+Once a baseline exists, the [investigation guide](docs/INVESTIGATING.md) walks
+through diagnosing each `# conflict` / `# override` entry — locating the AARs
+in the Gradle cache, diffing the actual files, tracing the dependency graph,
+mapping to runtime usage, and classifying intentional layering vs. real risk.
+
 ## Requirements
 
 - Android Gradle Plugin **8.0.0** or higher

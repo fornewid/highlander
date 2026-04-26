@@ -126,3 +126,7 @@ Scanner-emitted tags:
 `DUPLICATE_SAFE` overrides `OVERRIDE`: a byte-identical duplicate in the app module stays `DUPLICATE_SAFE` because no runtime difference exists.
 
 Adding `DUPLICATE_SAFE` support to `NativeLibScanner` or `ClassScanner` would require hashing `.so` files or zip-entry bytes respectively — not done today because duplicates in those scans are rarer and often trigger build failures (dex merge) rather than silent behavior drift.
+
+## Investigating Baseline Output
+
+Per-entry investigation workflow (locate AARs, diff bytes, trace deps, map to runtime usage, classify) lives in [docs/INVESTIGATING.md](docs/INVESTIGATING.md). When an AI agent is asked to act on a `# conflict` or `# override` line in a baseline file, that document is the canonical playbook — its 6-step process avoids re-deriving Gradle cache paths and AAR layout for every entry.
