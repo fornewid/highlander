@@ -1,0 +1,3 @@
+# threshold=8KB
+java-res/kotlin/kotlin.kotlin_builtins:
+  - org.jetbrains.kotlin:kotlin-stdlib:1.5.31 (13 KB)

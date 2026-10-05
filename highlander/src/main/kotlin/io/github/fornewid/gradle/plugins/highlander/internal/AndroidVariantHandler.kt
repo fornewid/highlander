@@ -19,6 +19,7 @@ internal object AndroidVariantHandler {
     private const val ARTIFACT_TYPE_JNI = "android-jni"
     private const val ARTIFACT_TYPE_ASSETS = "android-assets"
     private const val ARTIFACT_TYPE_CLASSES_JAR = "android-classes-jar"
+    private const val ARTIFACT_TYPE_JAVA_RES = "android-java-res"
 
     fun configureVariants(
         project: Project,
@@ -110,7 +111,15 @@ internal object AndroidVariantHandler {
         )
         val baselineDirectory = project.file(baselineDirName)
 
-        val needsRes = config.resources || config.valuesResources
+        if (config.largeFiles) {
+            require(config.largeFileThresholdKb > 0) {
+                "Highlander configuration \"${config.configurationName}\": largeFileThresholdKb must be positive, " +
+                    "was ${config.largeFileThresholdKb}."
+            }
+        }
+        val needsRes = config.resources || config.valuesResources || config.largeFiles
+        val needsJni = config.nativeLibs || config.largeFiles
+        val needsAssets = config.assets || config.largeFiles
         val resArtifacts = if (needsRes) {
             runtimeClasspath.incoming.artifactView {
                 attributes.attribute(artifactTypeAttr, ARTIFACT_TYPE_RES)
@@ -118,14 +127,14 @@ internal object AndroidVariantHandler {
             }.artifacts
         } else null
 
-        val jniArtifacts = if (config.nativeLibs) {
+        val jniArtifacts = if (needsJni) {
             runtimeClasspath.incoming.artifactView {
                 attributes.attribute(artifactTypeAttr, ARTIFACT_TYPE_JNI)
                 isLenient = true
             }.artifacts
         } else null
 
-        val assetArtifacts = if (config.assets) {
+        val assetArtifacts = if (needsAssets) {
             runtimeClasspath.incoming.artifactView {
                 attributes.attribute(artifactTypeAttr, ARTIFACT_TYPE_ASSETS)
                 isLenient = true
@@ -139,9 +148,16 @@ internal object AndroidVariantHandler {
             }.artifacts
         } else null
 
+        val javaResArtifacts = if (config.largeFiles) {
+            runtimeClasspath.incoming.artifactView {
+                attributes.attribute(artifactTypeAttr, ARTIFACT_TYPE_JAVA_RES)
+                isLenient = true
+            }.artifacts
+        } else null
+
         val localResDirs = if (needsRes) variant.sources.res?.all else null
-        val localAssetDirs = if (config.assets) variant.sources.assets?.all else null
-        val localJniLibDirs = if (config.nativeLibs) variant.sources.jniLibs?.all else null
+        val localAssetDirs = if (needsAssets) variant.sources.assets?.all else null
+        val localJniLibDirs = if (needsJni) variant.sources.jniLibs?.all else null
 
         fun configureTask(task: HighlanderCheckTask, isBaseline: Boolean) {
             task.configurationName.set(config.configurationName)
@@ -154,6 +170,8 @@ internal object AndroidVariantHandler {
             task.scanClasses.set(config.classes)
             task.excludeAndroidXValues.set(config.excludeAndroidXValues)
             task.skipContentIdenticalDuplicates.set(config.skipContentIdenticalDuplicates)
+            task.scanLargeFiles.set(config.largeFiles)
+            task.largeFileThresholdKb.set(config.largeFileThresholdKb)
             task.baselineDir.set(baselineDirectory)
             task.projectDir.set(project.layout.projectDirectory)
 
@@ -183,6 +201,12 @@ internal object AndroidVariantHandler {
                 task.classesFiles.set(classesArtifacts.artifactFiles)
                 task.classesArtifactMapping.set(
                     project.provider { toArtifactMapping(classesArtifacts) }
+                )
+            }
+            if (javaResArtifacts != null) {
+                task.javaResFiles.set(javaResArtifacts.artifactFiles)
+                task.javaResArtifactMapping.set(
+                    project.provider { toArtifactMapping(javaResArtifacts) }
                 )
             }
         }
