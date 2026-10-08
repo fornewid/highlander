@@ -68,7 +68,8 @@ This creates per-variant baseline files in `<module>/highlander/`:
     ├── releaseAssets.txt
     ├── releaseNativeLibs.txt     # only if nativeLibs = true
     ├── releaseValues.txt          # only if valuesResources = true
-    └── releaseClasses.txt         # only if classes = true
+    ├── releaseClasses.txt         # only if classes = true
+    └── releaseLargeFiles.txt      # only if largeFiles = true
 
 These files should be committed to version control.
 
@@ -120,6 +121,8 @@ These are disabled by default. Only add them when the user asks:
 | `nativeLibs = true` | Detect duplicate `.so` files per ABI (`arm64-v8a/libfoo.so` etc.) |
 | `valuesResources = true` | Detect duplicate `values/` XML entries (strings, colors, styles, ids) |
 | `classes = true` | Detect duplicate Java/Kotlin classes across dependency JARs/AARs |
+| `largeFiles = true` | Record files at or above `largeFilesThresholdKb` (default 200 KB) from `res/` (not `values*`), `assets/`, `jni/<abi>/` and Java resources (dependency JARs and project modules' `src/main/resources`), with the dependency or module they come from. Not a duplicate scan: it shows which files make the app big without building the app (pure JVM modules are built to their jar, as with `classes`) |
+| `largeFilesThresholdKb = 200` | Per-file threshold for `largeFiles`, in KB. Recorded in the baseline header, so changing it is a baseline change |
 
 Example with opt-in features:
 
@@ -186,6 +189,8 @@ alternative names.
 | `classes` | `jars`, `classFiles` |
 | `excludeAndroidXValues` | `excludeAndroidx`, `skipAndroidX` |
 | `skipContentIdenticalDuplicates` | `skipDuplicateSafe`, `hideDuplicateSafe` |
+| `largeFiles` | `bigFiles`, `largeFile`, `fileSize` |
+| `largeFilesThresholdKb` | `largeFileThresholdKb`, `largeFilesThreshold`, `thresholdKb` |
 | `baselineDir` | `baseline`, `baselineDirectory` |
 
 ## Common mistakes to avoid
@@ -193,9 +198,9 @@ alternative names.
 **AI Agent**: Pay special attention to these:
 
 1. Do NOT add properties to `configuration()` unless the user asks. `resources`
-   and `assets` are already on; `nativeLibs`, `valuesResources`, `classes` are
-   intentionally off by default because they produce more noise than value for
-   most projects.
+   and `assets` are already on; `nativeLibs`, `valuesResources`, `classes`,
+   `largeFiles` are intentionally off by default because they produce more
+   noise than value for most projects.
 2. Do NOT apply the plugin in a library module (`com.android.library`) or in
    the root `build.gradle.kts`. It only works on `com.android.application`.
 3. Baseline files under `<module>/highlander/` should be committed to version
@@ -209,6 +214,9 @@ alternative names.
    are intentional noise-reduction behaviors, not bugs.
 6. `excludeAndroidXValues = true` is the default behavior — users who want
    AndroidX values duplicates in the baseline must explicitly opt out.
+7. A `largeFiles` change after a dependency update (`~ <key>:` with
+   `lib:1.0 (N KB) -> lib:1.1 (M KB)`) is expected: sources carry the version and
+   size. Re-baseline after review; do not raise `largeFilesThresholdKb` to hide it.
 
 ## Not tracked
 
@@ -219,6 +227,10 @@ alternative names.
   compared by resource key, not by file bytes).
 - `R.class`, `R$*.class`, `BuildConfig.class`, `BuildConfig$*.class`, and
   `module-info.class` are excluded from the classes scan.
+- `largeFiles` reports what dependencies ship, not what one device downloads:
+  project `packaging` excludes and `ignoreAssetsPattern`, `abiFilters` and ABI
+  splits are not applied, and the app module's own `src/main/resources` is not
+  scanned.
 
 ## Links
 

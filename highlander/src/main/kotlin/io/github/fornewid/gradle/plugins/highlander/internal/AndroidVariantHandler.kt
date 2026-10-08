@@ -11,6 +11,7 @@ import org.gradle.api.Project
 import org.gradle.api.artifacts.ArtifactCollection
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition
 import org.gradle.api.attributes.Attribute
+import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskProvider
 
 internal object AndroidVariantHandler {
@@ -19,6 +20,7 @@ internal object AndroidVariantHandler {
     private const val ARTIFACT_TYPE_JNI = "android-jni"
     private const val ARTIFACT_TYPE_ASSETS = "android-assets"
     private const val ARTIFACT_TYPE_CLASSES_JAR = "android-classes-jar"
+    private const val ARTIFACT_TYPE_JAVA_RES = "android-java-res"
 
     fun configureVariants(
         project: Project,
@@ -110,7 +112,9 @@ internal object AndroidVariantHandler {
         )
         val baselineDirectory = project.file(baselineDirName)
 
-        val needsRes = config.resources || config.valuesResources
+        val needsRes = config.resources || config.valuesResources || config.largeFiles
+        val needsJni = config.nativeLibs || config.largeFiles
+        val needsAssets = config.assets || config.largeFiles
         val resArtifacts = if (needsRes) {
             runtimeClasspath.incoming.artifactView {
                 attributes.attribute(artifactTypeAttr, ARTIFACT_TYPE_RES)
@@ -118,14 +122,14 @@ internal object AndroidVariantHandler {
             }.artifacts
         } else null
 
-        val jniArtifacts = if (config.nativeLibs) {
+        val jniArtifacts = if (needsJni) {
             runtimeClasspath.incoming.artifactView {
                 attributes.attribute(artifactTypeAttr, ARTIFACT_TYPE_JNI)
                 isLenient = true
             }.artifacts
         } else null
 
-        val assetArtifacts = if (config.assets) {
+        val assetArtifacts = if (needsAssets) {
             runtimeClasspath.incoming.artifactView {
                 attributes.attribute(artifactTypeAttr, ARTIFACT_TYPE_ASSETS)
                 isLenient = true
@@ -139,9 +143,16 @@ internal object AndroidVariantHandler {
             }.artifacts
         } else null
 
+        val javaResArtifacts = if (config.largeFiles) {
+            runtimeClasspath.incoming.artifactView {
+                attributes.attribute(artifactTypeAttr, ARTIFACT_TYPE_JAVA_RES)
+                isLenient = true
+            }.artifacts
+        } else null
+
         val localResDirs = if (needsRes) variant.sources.res?.all else null
-        val localAssetDirs = if (config.assets) variant.sources.assets?.all else null
-        val localJniLibDirs = if (config.nativeLibs) variant.sources.jniLibs?.all else null
+        val localAssetDirs = if (needsAssets) variant.sources.assets?.all else null
+        val localJniLibDirs = if (needsJni) variant.sources.jniLibs?.all else null
 
         fun configureTask(task: HighlanderCheckTask, isBaseline: Boolean) {
             task.configurationName.set(config.configurationName)
@@ -154,36 +165,33 @@ internal object AndroidVariantHandler {
             task.scanClasses.set(config.classes)
             task.excludeAndroidXValues.set(config.excludeAndroidXValues)
             task.skipContentIdenticalDuplicates.set(config.skipContentIdenticalDuplicates)
+            task.scanLargeFiles.set(config.largeFiles)
+            task.largeFilesThresholdKb.set(config.largeFilesThresholdKb)
             task.baselineDir.set(baselineDirectory)
             task.projectDir.set(project.layout.projectDirectory)
 
-            // Configuration-cache-safe: convert ArtifactCollection to serializable map
             if (resArtifacts != null) {
                 task.resourceFiles.set(resArtifacts.artifactFiles)
-                task.resArtifactMapping.set(
-                    project.provider { toArtifactMapping(resArtifacts) }
-                )
+                task.resArtifactMapping.set(toArtifactMapping(resArtifacts))
             }
             if (localResDirs != null) task.localResourceDirs.set(localResDirs)
             if (jniArtifacts != null) {
                 task.nativeLibFiles.set(jniArtifacts.artifactFiles)
-                task.jniArtifactMapping.set(
-                    project.provider { toArtifactMapping(jniArtifacts) }
-                )
+                task.jniArtifactMapping.set(toArtifactMapping(jniArtifacts))
             }
             if (localJniLibDirs != null) task.localNativeLibDirs.set(localJniLibDirs)
             if (assetArtifacts != null) {
                 task.assetFiles.set(assetArtifacts.artifactFiles)
-                task.assetArtifactMapping.set(
-                    project.provider { toArtifactMapping(assetArtifacts) }
-                )
+                task.assetArtifactMapping.set(toArtifactMapping(assetArtifacts))
             }
             if (localAssetDirs != null) task.localAssetSourceDirs.set(localAssetDirs)
             if (classesArtifacts != null) {
                 task.classesFiles.set(classesArtifacts.artifactFiles)
-                task.classesArtifactMapping.set(
-                    project.provider { toArtifactMapping(classesArtifacts) }
-                )
+                task.classesArtifactMapping.set(toArtifactMapping(classesArtifacts))
+            }
+            if (javaResArtifacts != null) {
+                task.javaResFiles.set(javaResArtifacts.artifactFiles)
+                task.javaResArtifactMapping.set(toArtifactMapping(javaResArtifacts))
             }
         }
 
@@ -200,9 +208,13 @@ internal object AndroidVariantHandler {
         baselineTask.configure { dependsOn(perConfigBaselineTask) }
     }
 
-    private fun toArtifactMapping(artifacts: ArtifactCollection): Map<String, String> {
-        return artifacts.artifacts.associate { artifact ->
-            artifact.file.absolutePath to SourceOrigin.from(artifact.id.componentIdentifier).displayName
+    // Resolved when the task runs, after the project dependencies it consumes are built: a
+    // pure JVM module's jar does not exist yet when the configuration cache is stored.
+    private fun toArtifactMapping(artifacts: ArtifactCollection): Provider<Map<String, String>> {
+        return artifacts.resolvedArtifacts.map { results ->
+            results.associate { artifact ->
+                artifact.file.absolutePath to SourceOrigin.from(artifact.id.componentIdentifier).displayName
+            }
         }
     }
 }

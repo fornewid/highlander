@@ -2,11 +2,14 @@ package io.github.fornewid.gradle.plugins.highlander.internal.task
 
 import io.github.fornewid.gradle.plugins.highlander.HighlanderPlugin
 import io.github.fornewid.gradle.plugins.highlander.internal.BaselineFormat
+import io.github.fornewid.gradle.plugins.highlander.internal.LargeFilesBaselineFormat
 import io.github.fornewid.gradle.plugins.highlander.internal.models.Classification
 import io.github.fornewid.gradle.plugins.highlander.internal.models.DuplicateEntry
+import io.github.fornewid.gradle.plugins.highlander.internal.models.LargeFileEntry
 import io.github.fornewid.gradle.plugins.highlander.internal.models.SourceOrigin
 import io.github.fornewid.gradle.plugins.highlander.internal.scanner.AssetScanner
 import io.github.fornewid.gradle.plugins.highlander.internal.scanner.ClassScanner
+import io.github.fornewid.gradle.plugins.highlander.internal.scanner.LargeFileScanner
 import io.github.fornewid.gradle.plugins.highlander.internal.scanner.NativeLibScanner
 import io.github.fornewid.gradle.plugins.highlander.internal.scanner.ResourceScanner
 import io.github.fornewid.gradle.plugins.highlander.internal.scanner.ValuesResourceScanner
@@ -45,6 +48,8 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
     @get:Input abstract val scanClasses: Property<Boolean>
     @get:Input abstract val excludeAndroidXValues: Property<Boolean>
     @get:Input abstract val skipContentIdenticalDuplicates: Property<Boolean>
+    @get:Input abstract val scanLargeFiles: Property<Boolean>
+    @get:Input abstract val largeFilesThresholdKb: Property<Int>
 
     @get:Internal abstract val baselineDir: DirectoryProperty
     @get:Internal abstract val projectDir: DirectoryProperty
@@ -65,6 +70,8 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
     abstract val localAssetSourceDirs: ListProperty<Collection<Directory>>
     @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val classesFiles: Property<FileCollection>
+    @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val javaResFiles: Property<FileCollection>
 
     // Configuration-cache-safe: serializable maps instead of ArtifactCollection.
     // Key: file absolute path, Value: SourceOrigin display name
@@ -76,10 +83,18 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
     abstract val assetArtifactMapping: MapProperty<String, String>
     @get:Input @get:Optional
     abstract val classesArtifactMapping: MapProperty<String, String>
+    @get:Input @get:Optional
+    abstract val javaResArtifactMapping: MapProperty<String, String>
 
     @TaskAction
     fun execute() {
         val variantName = configurationName.get()
+        if (scanLargeFiles.get() && largeFilesThresholdKb.get() <= 0) {
+            throw GradleException(
+                "Highlander configuration \"$variantName\": largeFilesThresholdKb must be positive, " +
+                    "was ${largeFilesThresholdKb.get()}."
+            )
+        }
         val dir = baselineDir.get().asFile.also { it.mkdirs() }
         val isBaseline = shouldBaseline.get()
         val diffs = mutableListOf<String>()
@@ -134,6 +149,15 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
             if (result != null) diffs.add(result)
         }
 
+        if (scanLargeFiles.get()) {
+            val result = processLargeFilesBaseline(
+                file = File(dir, "${variantName}LargeFiles.txt"),
+                current = scanLargeFiles(),
+                isBaseline = isBaseline,
+            )
+            if (result != null) diffs.add(result)
+        }
+
         if (diffs.isEmpty() && !isBaseline) {
             logger.lifecycle("Highlander: No changes in ${projectPath.get()} ($variantName)")
             return
@@ -142,7 +166,7 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         if (diffs.isNotEmpty()) {
             val report = buildString {
                 appendLine()
-                appendLine("Highlander: Duplicates changed in ${projectPath.get()} ($variantName)")
+                appendLine("Highlander: ${reportTitle(diffs)} changed in ${projectPath.get()} ($variantName)")
                 appendLine()
                 diffs.forEach { appendLine(it) }
                 appendLine("If this is expected, re-baseline with:")
@@ -226,6 +250,106 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
                 }
             }
         }
+    }
+
+    // "Duplicates changed" when only duplicate scans differ; the large-files scan is
+    // not about duplicates, so name it when it is the only thing that changed.
+    private fun reportTitle(diffs: List<String>): String {
+        val onlyLargeFiles = diffs.all { it.startsWith("=== large-files ===") }
+        return if (onlyLargeFiles) "Large files" else "Duplicates"
+    }
+
+    private fun processLargeFilesBaseline(
+        file: File,
+        current: List<LargeFileEntry>,
+        isBaseline: Boolean,
+    ): String? {
+        val thresholdKb = largeFilesThresholdKb.get()
+        val currentContent = LargeFilesBaselineFormat.serialize(thresholdKb, current)
+        val relPath = file.relativeTo(projectDir.get().asFile)
+
+        if (isBaseline) {
+            file.writeText(currentContent)
+            logger.lifecycle("Highlander baseline created: $relPath")
+            return null
+        }
+
+        if (!file.exists()) {
+            return buildString {
+                appendLine("=== large-files ===")
+                appendLine("Baseline not found: $relPath")
+                appendLine("Run highlanderBaseline to create it.")
+            }
+        }
+
+        val expectedContent = file.readText()
+        if (currentContent == expectedContent) return null
+
+        val expected = LargeFilesBaselineFormat.parse(expectedContent)
+        val expectedByKey = expected.entries.associateBy { it.key }
+        val currentByKey = current.associateBy { it.key }
+        val thresholdChanged = expected.thresholdKb != null && expected.thresholdKb != thresholdKb
+        val changedKeys = (expectedByKey.keys + currentByKey.keys)
+            .filter { expectedByKey[it] != currentByKey[it] }
+            .sorted()
+
+        if (!thresholdChanged && changedKeys.isEmpty()) return null
+
+        return buildString {
+            appendLine("=== large-files ===")
+            if (thresholdChanged) {
+                appendLine("threshold changed: ${expected.thresholdKb}KB -> ${thresholdKb}KB")
+            }
+            for (key in changedKeys) {
+                val before = expectedByKey[key]
+                val after = currentByKey[key]
+                when {
+                    before == null -> {
+                        appendLine("+ $key:")
+                        after!!.sources.forEach { appendLine("+   - ${LargeFilesBaselineFormat.renderSource(it)}") }
+                    }
+                    after == null -> {
+                        appendLine("- $key:")
+                        before.sources.forEach { appendLine("-   - ${LargeFilesBaselineFormat.renderSource(it)}") }
+                    }
+                    else -> {
+                        // Same file on both sides, different source line: the common
+                        // "library update changed the size / version" case.
+                        appendLine("~ $key:")
+                        val removed = before.sources.filter { it !in after.sources }
+                        val added = after.sources.filter { it !in before.sources }
+                        if (removed.size == 1 && added.size == 1) {
+                            appendLine(
+                                "    - ${LargeFilesBaselineFormat.renderSource(removed[0])} -> " +
+                                    LargeFilesBaselineFormat.renderSource(added[0])
+                            )
+                        } else {
+                            removed.forEach { appendLine("-   - ${LargeFilesBaselineFormat.renderSource(it)}") }
+                            added.forEach { appendLine("+   - ${LargeFilesBaselineFormat.renderSource(it)}") }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun scanLargeFiles(): List<LargeFileEntry> {
+        val resSources = mutableListOf<Pair<File, SourceOrigin>>()
+        resSources.addAll(resolveFromMapping(resArtifactMapping))
+        addLocalDirs(resSources, localResourceDirs)
+        val assetSources = mutableListOf<Pair<File, SourceOrigin>>()
+        assetSources.addAll(resolveFromMapping(assetArtifactMapping))
+        addLocalDirs(assetSources, localAssetSourceDirs)
+        val jniSources = mutableListOf<Pair<File, SourceOrigin>>()
+        jniSources.addAll(resolveFromMapping(jniArtifactMapping))
+        addLocalDirs(jniSources, localNativeLibDirs)
+        return LargeFileScanner.scan(
+            resSources = resSources,
+            assetSources = assetSources,
+            jniSources = jniSources,
+            javaResSources = resolveFromMapping(javaResArtifactMapping),
+            thresholdBytes = largeFilesThresholdKb.get().toLong() * 1024,
+        )
     }
 
     // Scanners emit CONFLICT or DUPLICATE_SAFE based on byte comparison. Promote

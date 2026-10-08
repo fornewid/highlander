@@ -34,7 +34,7 @@ JAVA_HOME="/path/to/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew ...
 
 ## Architecture
 
-This is a Gradle plugin (`io.github.fornewid.highlander`) that detects duplicate resources, assets, classes, and native libraries across an Android app's dependencies. Only `com.android.application` modules are supported — library modules are not meaningful targets because duplicates are resolved at the final-app merge level.
+This is a Gradle plugin (`io.github.fornewid.highlander`) that detects duplicate resources, assets, classes, and native libraries across an Android app's dependencies, and (opt-in) records files above a size threshold with the dependency they come from. Only `com.android.application` modules are supported — library modules are not meaningful targets because duplicates are resolved at the final-app merge level.
 
 ### Module Structure
 
@@ -55,11 +55,14 @@ This is a Gradle plugin (`io.github.fornewid.highlander`) that detects duplicate
 - `ValuesResourceScanner` — XML entries in `values/` directories. Skips empty-body `<item type="id"/>` (and the `<id/>` shorthand) because AAPT2 treats them as weak `Id` values that merge without error. No byte-hash classification.
 - `NativeLibScanner` — `.so` files per ABI.
 - `ClassScanner` — class files in dependency JARs/AARs. Reads ZIP central directory only (no content extraction). Excludes `R.class`, `R$*.class`, `BuildConfig.class`, `BuildConfig$*.class`, `module-info.class`.
+- `LargeFileScanner` — not a duplicate scan. Walks the same res (minus `values*`), assets and jni dirs plus the `android-java-res` artifacts (a JAR / AAR `classes.jar` read via the ZIP central directory, or a directory for project modules) and emits one `LargeFileEntry` per file at or above the threshold, keyed `res/…` (a library's `-v4` type-dir suffix dropped so it matches the app's dirs), `assets/…`, `jni/<abi>/…`, `java-res/…`. Res and assets skip AGP's default `ignoreAssetsPattern` (`isIgnoredByAapt`). `isPackagedJavaResource` drops `.class` and `.so` (AGP's Java-resource merge does) and mirrors AGP's default `packaging.resources.excludes` (`*.kotlin_metadata`, `protobuf.meta`, root `LICENSE`/`NOTICE`, `_*`, dot-files, VCS dirs) and additionally skips all of `META-INF/`. No hashing. Sizes are stored in whole KB because that is all the baseline can express. Requesting `android-java-res` builds pure JVM modules to their jar, as `classes = true` does.
 
 **Classification pipeline** (`internal/models/DuplicateEntry.kt`):
 - Scanners emit `DuplicateEntry` with `classification: Classification` (`CONFLICT` / `DUPLICATE_SAFE`; `OVERRIDE` reserved for the task).
 - `HighlanderCheckTask.promoteAppOverride()` promotes `CONFLICT` → `OVERRIDE` when the app module (`SourceOrigin.Module(projectPath.get())`) is among the sources. `DUPLICATE_SAFE` is never promoted even with the app module present.
 - `Classification` is part of `DuplicateEntry.equals/hashCode` so tag flips (e.g. `conflict` → `duplicate-safe` after a dependency bytes match) are detected by the guard-diff path, not silently accepted.
+
+**Large-files baseline** (`internal/LargeFilesBaselineFormat.kt`): same `key:` / `  - source (…)` shape as `BaselineFormat` with `(N KB)` in place of the extension, no classification tags, and a `# threshold=<N>KB` header. `HighlanderCheckTask.processLargeFilesBaseline()` writes `<variant>LargeFiles.txt`, compares by key (`+` / `-` / `~` with `old -> new` on one line when exactly one source changed) and reports `threshold changed: A -> B` when the header disagrees with `largeFilesThresholdKb`. When only this scan differs, the report title says "Large files changed" instead of "Duplicates changed".
 
 **Content hashing**: `ContentHasher.sha256Hex()` streams files through `DigestInputStream` with an 8KB buffer — constant memory regardless of file size. Used by `ResourceScanner` and `AssetScanner` only; other scanners don't classify as `DUPLICATE_SAFE`.
 
@@ -77,16 +80,18 @@ This is a Gradle plugin (`io.github.fornewid.highlander`) that detects duplicate
 `HighlanderConfiguration` defaults:
 
 - **`true`**: `resources`, `assets`, `excludeAndroidXValues`, `skipContentIdenticalDuplicates`
-- **`false`** (opt-in, noisier): `nativeLibs`, `valuesResources`, `classes`
+- **`false`** (opt-in, noisier): `nativeLibs`, `valuesResources`, `classes`, `largeFiles` (with `largeFilesThresholdKb = 200`)
+
+`largeFiles = true` also requests the res, assets and jni artifact views even when the corresponding duplicate scans are off (`AndroidVariantHandler` computes `needsRes` / `needsAssets` / `needsJni`), plus the `android-java-res` view that only this scan uses.
 
 `skipContentIdenticalDuplicates = true` means `HighlanderCheckTask.processBaseline` drops entries classified as `DUPLICATE_SAFE` before serializing / comparing. The baseline therefore only contains `# override` and `# conflict` entries by default. Set the flag to `false` in tests that need to assert on `# duplicate-safe` output.
 
 ### Test Structure
 
 - `src/test/` — Unit tests (JUnit Jupiter + Google Truth). Scanner tests, `BaselineFormatTest` for roundtrip/tag/equality, `ContentHasher` exercised via scanner tests.
-- `src/gradleTest/` — Integration tests using GradleRunner. `AndroidProject` fixture creates temporary Android projects with the plugin injected via buildscript classpath (not `withPluginClasspath()`, to avoid AGP classloader isolation). `AndroidXValuesProject` publishes synthetic `androidx.*` AARs to a project-local maven repo for filter tests. `TestProjectScaffold` provides shared boilerplate (settings, buildscript, gradle.properties, local.properties, SDK lookup).
+- `src/gradleTest/` — Integration tests using GradleRunner. `AndroidProject` fixture creates temporary Android projects with the plugin injected via buildscript classpath (not `withPluginClasspath()`, to avoid AGP classloader isolation). `AndroidXValuesProject` publishes synthetic `androidx.*` AARs to a project-local maven repo for filter tests. `TestProjectScaffold` provides shared boilerplate (settings, buildscript, gradle.properties, local.properties, SDK lookup, `publishAar` / `zip` for synthetic AARs).
 - Builder runs GradleRunner with `--configuration-cache --configuration-cache-problems=fail` so any CC regression fails the build.
-- `AndroidProject` supports product flavors via the `flavors: List<String>` parameter for flavored-variant coverage.
+- `AndroidProject` supports product flavors via the `flavors: List<String>` parameter for flavored-variant coverage, and `appAssets` / `moduleJavaResources` / `appDependencies` / `jvmModuleJavaResources` (a `java-library` module) / `externalAars` (published to a project-local Maven repo) / `writeFile` / `deleteFile` for the large-files cases (big files are written as text blobs under `res/raw/`, `assets/` and `src/main/resources/` so no aapt2 compilation is involved).
 
 ## Publishing
 
@@ -107,7 +112,7 @@ Update these files in order:
 2. `HighlanderConfiguration.kt` — Add a boolean flag (default `true` for low-noise scans, `false` for opt-in).
 3. `internal/AndroidVariantHandler.kt` — Wire the config flag to `HighlanderCheckTask` inputs and obtain the artifact view for the appropriate AGP artifact type if needed (see `ARTIFACT_TYPE_*` constants).
 4. `internal/task/HighlanderCheckTask.kt` — Add `abstract val` properties using lazy types (`Property<T>` for scalars, `ListProperty` / `MapProperty` for collections, `FileCollection` / `DirectoryProperty` for file inputs) and a `scanXxx()` method invoked from `execute()`. Match the existing annotation conventions: `@get:Input` for scalars, `@get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)` for file collections so build-cache relocation works correctly.
-5. `internal/BaselineFormat.kt` — No changes needed; all scans share the same tag-based format.
+5. `internal/BaselineFormat.kt` — No changes needed; all duplicate scans share the same tag-based format. (The large-files scan is the one exception and has its own `LargeFilesBaselineFormat`; a new non-duplicate scan should follow that pattern rather than bend `DuplicateEntry`.)
 6. Unit tests under `src/test/.../scanner/XxxScannerTest.kt` covering identical/divergent/mixed duplicates and classification assertions.
 7. gradleTest end-to-end case under `HighlanderPluginTest.kt`.
 8. Update `highlander/api/highlander.api` with `./gradlew :highlander:apiDump` if public properties changed.

@@ -63,4 +63,27 @@ public open class HighlanderConfiguration @Inject constructor(
      * on native-libs, values, or classes scans.
      */
     public var skipContentIdenticalDuplicates: Boolean = true
+
+    /**
+     * Report files at or above [largeFilesThresholdKb] across the app module and its
+     * dependencies: file-based resources (`res/`, excluding `values*`), assets, native
+     * libraries per ABI, and Java resources inside dependency JARs. Disabled by default.
+     *
+     * This is not a duplicate scan. It answers "which files make the app big, and which
+     * dependency brought them" and records the answer in `<variant>LargeFiles.txt`, so
+     * that a new large file — or a library update that grows one — shows up as a
+     * baseline change. External dependencies are read from AGP's cached artifact
+     * transforms; project modules provide their packaged res/assets/jni and Java
+     * resources, which means a pure JVM module is built to its jar (as with [classes]).
+     */
+    public var largeFiles: Boolean = false
+
+    /**
+     * Per-file threshold for [largeFiles], in KB (1024 bytes). Default 200: catches
+     * full-screen PNGs, CJK fonts, `.so` files, ML models and bundled emoji fonts while
+     * leaving icons, Latin fonts and typical Lottie JSON alone. The value is written
+     * into the baseline header, so changing it is reported as a baseline change.
+     * Must be positive.
+     */
+    public var largeFilesThresholdKb: Int = 200
 }

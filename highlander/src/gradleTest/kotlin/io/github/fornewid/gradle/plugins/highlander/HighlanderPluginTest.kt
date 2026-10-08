@@ -6,6 +6,7 @@ import io.github.fornewid.gradle.plugins.highlander.fixture.AndroidXValuesProjec
 import io.github.fornewid.gradle.plugins.highlander.fixture.Builder
 import io.github.fornewid.gradle.plugins.highlander.fixture.Builder.build
 import io.github.fornewid.gradle.plugins.highlander.fixture.Builder.buildAndFail
+import io.github.fornewid.gradle.plugins.highlander.fixture.TestProjectScaffold
 import org.junit.jupiter.api.Test
 
 internal class HighlanderPluginTest {
@@ -343,6 +344,288 @@ internal class HighlanderPluginTest {
 
             val jniBaseline = project.readFile("app/highlander/releaseNativeLibs.txt")
             assertThat(jniBaseline).isNull()
+        }
+    }
+
+    // --- large files -------------------------------------------------------
+
+    private val largeFilesConfig = """
+        highlander {
+            configuration("release") {
+                resources = false
+                assets = false
+                largeFiles = true
+            }
+        }
+    """.trimIndent()
+
+    private fun blob(kb: Int): String = "x".repeat(kb * 1024)
+
+    @Test
+    fun `largeFiles baseline lists big files from app and module with their sizes`() {
+        AndroidProject(
+            pluginConfig = largeFilesConfig,
+            appResources = mapOf(
+                "raw/big_app.bin" to blob(300),
+                "raw/small_app.bin" to blob(10),
+            ),
+            moduleResources = mapOf("raw/big_module.bin" to blob(250)),
+            appAssets = mapOf("fonts/big.ttf" to blob(210)),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+
+            val baseline = project.readFile("app/highlander/releaseLargeFiles.txt")
+            assertThat(baseline).isEqualTo(
+                """
+                # threshold=200KB
+                assets/fonts/big.ttf:
+                  - :app (210 KB)
+                res/raw/big_app.bin:
+                  - :app (300 KB)
+                res/raw/big_module.bin:
+                  - :module1 (250 KB)
+
+                """.trimIndent()
+            )
+            // Duplicate scans were off, so no other baseline is written.
+            assertThat(project.readFile("app/highlander/releaseResources.txt")).isNull()
+
+            build(project, ":app:highlanderRelease")
+        }
+    }
+
+    @Test
+    fun `guard fails when a new large file appears`() {
+        AndroidProject(
+            pluginConfig = largeFilesConfig,
+            appResources = mapOf("raw/big_app.bin" to blob(300)),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+
+            project.addAppResource("raw/new_big.bin", blob(400))
+
+            val result = buildAndFail(project, ":app:highlanderRelease")
+            assertThat(result.output).contains("Highlander: Large files changed in :app (release)")
+            assertThat(result.output).contains("=== large-files ===")
+            assertThat(result.output).contains("+ res/raw/new_big.bin:")
+            assertThat(result.output).contains("+   - :app (400 KB)")
+            assertThat(result.output).contains("./gradlew :app:highlanderBaselineRelease")
+        }
+    }
+
+    @Test
+    fun `guard reports a grown file on one line`() {
+        AndroidProject(
+            pluginConfig = largeFilesConfig,
+            appResources = mapOf("raw/grow.bin" to blob(300)),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+
+            project.addAppResource("raw/grow.bin", blob(450))
+
+            val result = buildAndFail(project, ":app:highlanderRelease")
+            assertThat(result.output).contains("~ res/raw/grow.bin:")
+            assertThat(result.output).contains("    - :app (300 KB) -> :app (450 KB)")
+        }
+    }
+
+    @Test
+    fun `guard reports a threshold change`() {
+        AndroidProject(
+            pluginConfig = largeFilesConfig,
+            appResources = mapOf("raw/big_app.bin" to blob(300)),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+
+            // The baseline was recorded with another threshold than the one configured now.
+            val baseline = project.readFile("app/highlander/releaseLargeFiles.txt")!!
+            project.writeFile(
+                "app/highlander/releaseLargeFiles.txt",
+                baseline.replace("# threshold=200KB", "# threshold=100KB"),
+            )
+
+            val result = buildAndFail(project, ":app:highlanderRelease")
+            assertThat(result.output).contains("threshold changed: 100KB -> 200KB")
+        }
+    }
+
+    @Test
+    fun `largeFiles baseline is not written unless enabled`() {
+        AndroidProject(
+            appResources = mapOf("raw/big_app.bin" to blob(300)),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+
+            assertThat(project.readFile("app/highlander/releaseLargeFiles.txt")).isNull()
+        }
+    }
+
+    @Test
+    fun `largeFiles reads java resources from project modules and external jars`() {
+        val config = """
+            highlander {
+                configuration("release") {
+                    resources = false
+                    assets = false
+                    largeFiles = true
+                    largeFilesThresholdKb = 10
+                }
+            }
+        """.trimIndent()
+        AndroidProject(
+            pluginConfig = config,
+            moduleJavaResources = mapOf("data/model.bin" to blob(300)),
+            appDependencies = listOf("org.jetbrains.kotlin:kotlin-stdlib:1.9.24"),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+
+            val baseline = project.readFile("app/highlander/releaseLargeFiles.txt")!!
+            // A project module hands its Java resources over as a directory …
+            assertThat(baseline).contains("java-res/data/model.bin:\n  - :module1 (300 KB)")
+            // … an external dependency as a jar; kotlin.kotlin_builtins is a packaged Java resource.
+            assertThat(baseline).containsMatch(
+                Regex.escape("java-res/kotlin/kotlin.kotlin_builtins:\n  - org.jetbrains.kotlin:kotlin-stdlib:1.9.24 (") + "\\d+ KB\\)"
+            )
+            // Default packaging excludes apply: nothing from META-INF and no .kotlin_metadata.
+            assertThat(baseline).doesNotContain("META-INF")
+            assertThat(baseline).doesNotContain("kotlin_metadata")
+        }
+    }
+
+    @Test
+    fun `largeFiles reads a pure JVM module that is not built yet when the configuration cache is stored`() {
+        AndroidProject(
+            pluginConfig = largeFilesConfig,
+            jvmModuleJavaResources = mapOf("data/table.bin" to blob(300)),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+
+            val baseline = project.readFile("app/highlander/releaseLargeFiles.txt")!!
+            assertThat(baseline).contains("java-res/data/table.bin:\n  - :jvmlib (300 KB)")
+        }
+    }
+
+    @Test
+    fun `largeFiles reads assets, res, native libs and java resources from an external AAR`() {
+        val big = blob(300).toByteArray()
+        AndroidProject(
+            pluginConfig = largeFilesConfig,
+            externalAars = mapOf(
+                "com.example:sdk:1.0" to mapOf(
+                    "assets/big.bin" to big,
+                    "res/raw/big.bin" to big,
+                    "jni/arm64-v8a/libbig.so" to big,
+                    "classes.jar" to TestProjectScaffold.zip(mapOf("data/model.bin" to big)),
+                ),
+            ),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+
+            assertThat(project.readFile("app/highlander/releaseLargeFiles.txt")).isEqualTo(
+                """
+                # threshold=200KB
+                assets/big.bin:
+                  - com.example:sdk:1.0 (300 KB)
+                java-res/data/model.bin:
+                  - com.example:sdk:1.0 (300 KB)
+                jni/arm64-v8a/libbig.so:
+                  - com.example:sdk:1.0 (300 KB)
+                res/raw/big.bin:
+                  - com.example:sdk:1.0 (300 KB)
+
+                """.trimIndent()
+            )
+        }
+    }
+
+    @Test
+    fun `a non-positive threshold fails the highlander task, not the configuration`() {
+        val config = """
+            highlander {
+                configuration("release") {
+                    largeFiles = true
+                    largeFilesThresholdKb = 0
+                }
+            }
+        """.trimIndent()
+        AndroidProject(pluginConfig = config).use { project ->
+            build(project, ":app:help")
+
+            val result = buildAndFail(project, ":app:highlanderBaselineRelease")
+            assertThat(result.output).contains("largeFilesThresholdKb must be positive, was 0.")
+        }
+    }
+
+    @Test
+    fun `guard reports a removed large file`() {
+        AndroidProject(
+            pluginConfig = largeFilesConfig,
+            appResources = mapOf(
+                "raw/keep.bin" to blob(300),
+                "raw/gone.bin" to blob(300),
+            ),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+
+            project.deleteFile("app/src/main/res/raw/gone.bin")
+
+            val result = buildAndFail(project, ":app:highlanderRelease")
+            assertThat(result.output).contains("- res/raw/gone.bin:")
+            assertThat(result.output).contains("-   - :app (300 KB)")
+            assertThat(result.output).doesNotContain("keep.bin")
+        }
+    }
+
+    @Test
+    fun `mixed duplicate and large-file changes keep the Duplicates changed title`() {
+        val config = """
+            highlander {
+                configuration("release") {
+                    resources = true
+                    assets = false
+                    largeFiles = true
+                }
+            }
+        """.trimIndent()
+        AndroidProject(
+            pluginConfig = config,
+            appResources = mapOf("drawable/ic_app.xml" to "<vector/>"),
+            moduleResources = mapOf("drawable/ic_module.xml" to "<shape/>"),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+
+            project.addAppResource("drawable/ic_module.xml", "<vector/>") // new divergent duplicate
+            project.addAppResource("raw/big.bin", blob(300))               // new large file
+
+            val result = buildAndFail(project, ":app:highlanderRelease")
+            assertThat(result.output).contains("Highlander: Duplicates changed in :app (release)")
+            assertThat(result.output).contains("=== resources ===")
+            assertThat(result.output).contains("+ drawable/ic_module")
+            assertThat(result.output).contains("=== large-files ===")
+            assertThat(result.output).contains("+ res/raw/big.bin:")
+        }
+    }
+
+    @Test
+    fun `largeFiles baseline follows the flavored variant name`() {
+        val config = """
+            highlander {
+                configuration("devRelease") {
+                    resources = false
+                    assets = false
+                    largeFiles = true
+                }
+            }
+        """.trimIndent()
+        AndroidProject(
+            pluginConfig = config,
+            appResources = mapOf("raw/big_app.bin" to blob(300)),
+            flavors = listOf("dev"),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineDevRelease")
+
+            val baseline = project.readFile("app/highlander/devReleaseLargeFiles.txt")
+            assertThat(baseline).contains("res/raw/big_app.bin:\n  - :app (300 KB)")
         }
     }
 }

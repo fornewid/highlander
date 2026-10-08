@@ -11,7 +11,7 @@
 
 > **"There can be only one."**
 
-A Gradle plugin that finds duplicate resources, assets, classes, and native libraries hiding across your Android dependencies — before they cause silent UI bugs, Dex merge failures, or runtime crashes.
+A Gradle plugin that finds what is hiding across your Android dependencies — duplicate resources, assets, classes and native libraries before they cause silent UI bugs, Dex merge failures or runtime crashes, and oversized files before they bloat your APK.
 
 ## Why Use It?
 
@@ -23,6 +23,7 @@ When you add libraries to an Android project, duplicates can sneak in silently:
 | **Duplicate assets** (`config.json`) | Higher-priority module's file wins | Runtime — library reads wrong config |
 | **Duplicate classes** (`a.a.class`) | Dex merge fails or wrong class loads | Build time or runtime crash |
 | **Duplicate native libs** (`libc++_shared.so`) | Build fails, devs add `pickFirst` | Runtime — `UnsatisfiedLinkError` |
+| **Oversized files** (a 10 MB bundled font, `.so` per ABI, ML models) | Packaged as-is | Play Console — download size jumped |
 
 Highlander catches all of these **before they become problems**, using a baseline-based approach that integrates into your CI pipeline.
 
@@ -84,6 +85,8 @@ highlander {
         classes = false                         // Scan Java/Kotlin classes in JARs/AARs
         excludeAndroidXValues = true            // Drop androidx.* sources from the values scan
         skipContentIdenticalDuplicates = true   // Drop byte-identical duplicates from the baseline
+        largeFiles = false                      // Record files at or above largeFilesThresholdKb
+        largeFilesThresholdKb = 200             // Per-file threshold for largeFiles, in KB
     }
 }
 ```
@@ -99,6 +102,8 @@ highlander {
 | `classes` | `false` | Detect duplicate Java/Kotlin classes across dependency JARs/AARs |
 | `excludeAndroidXValues` | **`true`** | Filter out `androidx.*` sources from the values scan only |
 | `skipContentIdenticalDuplicates` | **`true`** | Omit byte-identical duplicates (classified `duplicate-safe`) from the baseline |
+| `largeFiles` | `false` | Record files at or above the threshold across the app and its dependencies (see [Large files](#large-files)) |
+| `largeFilesThresholdKb` | `200` | Per-file threshold for `largeFiles`, in KB (1024 bytes) |
 | `baselineDir` | `"highlander"` | Directory for baseline files |
 
 **Note on `excludeAndroidXValues`**: AndroidX components (Compose, Core, etc.) routinely share benign values declarations by design. Filtering them out keeps the values baseline signal-to-noise high. Set to `false` to include AndroidX entries. No effect unless `valuesResources = true`. Run with `--info` to see how many AndroidX sources were excluded and how many unknown-origin sources remain (unknown-origin sources such as `files()` or some composite-build setups are not matched by the filter).
@@ -117,7 +122,8 @@ highlander/
 ├── releaseAssets.txt        # assets duplicates
 ├── releaseNativeLibs.txt    # .so duplicates         (if nativeLibs = true)
 ├── releaseValues.txt        # values entry duplicates (if valuesResources = true)
-└── releaseClasses.txt       # class duplicates       (if classes = true)
+├── releaseClasses.txt       # class duplicates       (if classes = true)
+└── releaseLargeFiles.txt    # files above the threshold (if largeFiles = true)
 ```
 
 ### Classification
@@ -172,6 +178,47 @@ If a duplicate's classification changes (e.g. a dependency upgrade makes bytes m
 ```
 
 Re-run `highlanderBaseline` to accept the transition.
+
+## Large files
+
+Highlander already opens every dependency's `res/`, `assets/` and `jni/` to look for duplicates. With `largeFiles = true` the same walk also records every file at or above `largeFilesThresholdKb`, together with the dependency (or module) it comes from. External dependencies come from AGP's cached artifact transforms, so no app build is needed; project modules provide their packaged resources, which builds a pure JVM module to its jar (the same cost `classes = true` has). Measuring the APK after the fact is slower and says less: a release build is needed each time, resource names are shortened, and a bigger `dex` number does not say which library caused it.
+
+What is scanned (one entry per file, no grouping):
+
+| Key prefix | Source | Notes |
+|------------|--------|-------|
+| `res/<type>/<file>` | dependency `res/` and the app module's res dirs | `values*/` is skipped — it compiles into `resources.arsc` |
+| `assets/<path>` | dependency and app assets | recursive |
+| `jni/<abi>/<lib>.so` | dependency and app `jniLibs` | one entry per ABI |
+| `java-res/<entry>` | Java resources inside dependency JARs and AAR `classes.jar`, and project modules' `src/main/resources` | everything that is not a `.class` or `.so` file, minus AGP's default `packaging.resources.excludes` (`*.kotlin_metadata`, `protobuf.meta`, root `LICENSE`/`NOTICE`, dot- and underscore-prefixed names, …) and everything under `META-INF/`. These land at the APK root and are easy to miss |
+
+Not scanned: code size (`classes.jar`, dex — R8 decides what survives), `values*` resources and locale strings (not files), AAR root files such as `third_party_licenses.txt` (never packaged). Sizes are uncompressed sizes as found in the extracted artifacts.
+
+`highlander/releaseLargeFiles.txt` keeps the familiar shape with the size where the other baselines put the extension, plus a header that records the threshold:
+
+```
+# threshold=200KB
+assets/NotoColorEmojiCompat.ttf:
+  - androidx.emoji2:emoji2-bundled:1.5.0 (10521 KB)
+jni/arm64-v8a/libsqlcipher.so:
+  - net.zetetic:sqlcipher-android:4.6.1 (5661 KB)
+res/drawable-nodpi/banner_event_autumn.png:
+  - :app (3550 KB)
+```
+
+The guard reports new files with `+`, removed ones with `-`, and a file whose source line changed (a library update that grew it) on one `~` line. Changing the threshold is reported too, so the header never silently drifts from the configuration:
+
+```
+Highlander: Large files changed in :app (release)
+
+=== large-files ===
+~ assets/NotoColorEmojiCompat.ttf:
+    - androidx.emoji2:emoji2-bundled:1.5.0 (10521 KB) -> androidx.emoji2:emoji2-bundled:1.6.0 (10600 KB)
++ jni/arm64-v8a/libface_detector_v2_jni.so:
++   - com.google.mlkit:face-detection:16.1.7 (8321 KB)
+```
+
+Limits: project-specific `packaging` excludes and `ignoreAssetsPattern`, `abiFilters` and ABI splits are not applied — the scan reports what dependencies ship, not what one device downloads (an AAB delivers only the device's ABI). The app module's own `src/main/resources` is not scanned. When one origin contributes the same path from two source sets, the first copy at or above the threshold is recorded. A library's resource directories carry the API level AGP adds for their qualifiers: `-v4` is dropped, so `drawable-hdpi-v4` and the app's `drawable-hdpi` are one key, but higher levels are kept (`drawable-night-v8` and the app's `drawable-night` are two).
 
 ## Investigating duplicates
 

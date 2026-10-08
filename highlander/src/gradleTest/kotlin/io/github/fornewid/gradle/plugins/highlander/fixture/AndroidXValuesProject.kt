@@ -1,9 +1,6 @@
 package io.github.fornewid.gradle.plugins.highlander.fixture
 
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 
 /**
  * A gradleTest fixture that publishes one or more synthetic AARs under `androidx.*` groups
@@ -34,13 +31,17 @@ internal class AndroidXValuesProject(
     val dir: File get() = scaffold.dir
 
     init {
-        val localRepo = dir.resolve("local-maven-repo").apply { mkdirs() }
         for (artifact in androidXArtifacts) {
-            publishAndroidXAar(localRepo, artifact)
+            val strings = """
+                <resources>
+                    <string name="shared_string">${artifact.sharedValue}</string>
+                </resources>
+            """.trimIndent()
+            scaffold.publishAar(artifact.coordinates, mapOf("res/values/strings.xml" to strings.toByteArray()))
         }
 
         scaffold.writeSettings("test-project", ":app")
-        scaffold.writeRootBuildscript(extraRepoUrls = listOf(localRepo.absolutePath))
+        scaffold.writeRootBuildscript(extraRepoUrls = listOf(scaffold.localMavenRepo.absolutePath))
         scaffold.writeGradleProperties()
         scaffold.writeLocalProperties()
 
@@ -108,59 +109,6 @@ internal class AndroidXValuesProject(
 
     override fun close() {
         scaffold.delete()
-    }
-
-    private fun publishAndroidXAar(repoDir: File, artifact: AndroidXArtifact) {
-        val groupPath = artifact.group.replace('.', '/')
-        val artifactDir = repoDir.resolve("$groupPath/${artifact.name}/${artifact.version}")
-            .apply { mkdirs() }
-
-        val aarFile = artifactDir.resolve("${artifact.name}-${artifact.version}.aar")
-        ZipOutputStream(aarFile.outputStream()).use { zip ->
-            zip.putNextEntry(ZipEntry("AndroidManifest.xml"))
-            zip.write(
-                """
-                <?xml version="1.0" encoding="utf-8"?>
-                <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-                    package="${artifact.group}.${artifact.name.replace('-', '_')}" />
-                """.trimIndent().toByteArray()
-            )
-            zip.closeEntry()
-
-            zip.putNextEntry(ZipEntry("R.txt"))
-            zip.closeEntry()
-
-            val emptyJar = ByteArrayOutputStream().apply {
-                ZipOutputStream(this).close()
-            }.toByteArray()
-            zip.putNextEntry(ZipEntry("classes.jar"))
-            zip.write(emptyJar)
-            zip.closeEntry()
-
-            zip.putNextEntry(ZipEntry("res/values/strings.xml"))
-            zip.write(
-                """
-                <resources>
-                    <string name="shared_string">${artifact.sharedValue}</string>
-                </resources>
-                """.trimIndent().toByteArray()
-            )
-            zip.closeEntry()
-        }
-
-        val pomFile = artifactDir.resolve("${artifact.name}-${artifact.version}.pom")
-        pomFile.writeText(
-            """
-            <?xml version="1.0" encoding="UTF-8"?>
-            <project xmlns="http://maven.apache.org/POM/4.0.0">
-                <modelVersion>4.0.0</modelVersion>
-                <groupId>${artifact.group}</groupId>
-                <artifactId>${artifact.name}</artifactId>
-                <version>${artifact.version}</version>
-                <packaging>aar</packaging>
-            </project>
-            """.trimIndent()
-        )
     }
 
     companion object {
