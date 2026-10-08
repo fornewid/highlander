@@ -4,8 +4,8 @@ public class io/github/fornewid/gradle/plugins/highlander/HighlanderConfiguratio
 	public final fun getClasses ()Z
 	public final fun getConfigurationName ()Ljava/lang/String;
 	public final fun getExcludeAndroidXValues ()Z
-	public final fun getLargeFileThresholdKb ()I
 	public final fun getLargeFiles ()Z
+	public final fun getLargeFilesThresholdKb ()I
 	public fun getName ()Ljava/lang/String;
 	public final fun getNativeLibs ()Z
 	public final fun getResources ()Z
@@ -14,8 +14,8 @@ public class io/github/fornewid/gradle/plugins/highlander/HighlanderConfiguratio
 	public final fun setAssets (Z)V
 	public final fun setClasses (Z)V
 	public final fun setExcludeAndroidXValues (Z)V
-	public final fun setLargeFileThresholdKb (I)V
 	public final fun setLargeFiles (Z)V
+	public final fun setLargeFilesThresholdKb (I)V
 	public final fun setNativeLibs (Z)V
 	public final fun setResources (Z)V
 	public final fun setSkipContentIdenticalDuplicates (Z)V

@@ -27,6 +27,6 @@ highlander {
         assets = true
         classes = true
         largeFiles = true
-        largeFileThresholdKb = 8    // the sample has no big files of its own; low enough to list something
+        largeFilesThresholdKb = 8    // the sample has no big files of its own; low enough to list something
     }
 }

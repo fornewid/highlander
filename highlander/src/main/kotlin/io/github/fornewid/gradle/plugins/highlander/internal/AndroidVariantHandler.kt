@@ -11,6 +11,7 @@ import org.gradle.api.Project
 import org.gradle.api.artifacts.ArtifactCollection
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition
 import org.gradle.api.attributes.Attribute
+import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskProvider
 
 internal object AndroidVariantHandler {
@@ -111,12 +112,6 @@ internal object AndroidVariantHandler {
         )
         val baselineDirectory = project.file(baselineDirName)
 
-        if (config.largeFiles) {
-            require(config.largeFileThresholdKb > 0) {
-                "Highlander configuration \"${config.configurationName}\": largeFileThresholdKb must be positive, " +
-                    "was ${config.largeFileThresholdKb}."
-            }
-        }
         val needsRes = config.resources || config.valuesResources || config.largeFiles
         val needsJni = config.nativeLibs || config.largeFiles
         val needsAssets = config.assets || config.largeFiles
@@ -171,43 +166,32 @@ internal object AndroidVariantHandler {
             task.excludeAndroidXValues.set(config.excludeAndroidXValues)
             task.skipContentIdenticalDuplicates.set(config.skipContentIdenticalDuplicates)
             task.scanLargeFiles.set(config.largeFiles)
-            task.largeFileThresholdKb.set(config.largeFileThresholdKb)
+            task.largeFilesThresholdKb.set(config.largeFilesThresholdKb)
             task.baselineDir.set(baselineDirectory)
             task.projectDir.set(project.layout.projectDirectory)
 
-            // Configuration-cache-safe: convert ArtifactCollection to serializable map
             if (resArtifacts != null) {
                 task.resourceFiles.set(resArtifacts.artifactFiles)
-                task.resArtifactMapping.set(
-                    project.provider { toArtifactMapping(resArtifacts) }
-                )
+                task.resArtifactMapping.set(toArtifactMapping(resArtifacts))
             }
             if (localResDirs != null) task.localResourceDirs.set(localResDirs)
             if (jniArtifacts != null) {
                 task.nativeLibFiles.set(jniArtifacts.artifactFiles)
-                task.jniArtifactMapping.set(
-                    project.provider { toArtifactMapping(jniArtifacts) }
-                )
+                task.jniArtifactMapping.set(toArtifactMapping(jniArtifacts))
             }
             if (localJniLibDirs != null) task.localNativeLibDirs.set(localJniLibDirs)
             if (assetArtifacts != null) {
                 task.assetFiles.set(assetArtifacts.artifactFiles)
-                task.assetArtifactMapping.set(
-                    project.provider { toArtifactMapping(assetArtifacts) }
-                )
+                task.assetArtifactMapping.set(toArtifactMapping(assetArtifacts))
             }
             if (localAssetDirs != null) task.localAssetSourceDirs.set(localAssetDirs)
             if (classesArtifacts != null) {
                 task.classesFiles.set(classesArtifacts.artifactFiles)
-                task.classesArtifactMapping.set(
-                    project.provider { toArtifactMapping(classesArtifacts) }
-                )
+                task.classesArtifactMapping.set(toArtifactMapping(classesArtifacts))
             }
             if (javaResArtifacts != null) {
                 task.javaResFiles.set(javaResArtifacts.artifactFiles)
-                task.javaResArtifactMapping.set(
-                    project.provider { toArtifactMapping(javaResArtifacts) }
-                )
+                task.javaResArtifactMapping.set(toArtifactMapping(javaResArtifacts))
             }
         }
 
@@ -224,9 +208,13 @@ internal object AndroidVariantHandler {
         baselineTask.configure { dependsOn(perConfigBaselineTask) }
     }
 
-    private fun toArtifactMapping(artifacts: ArtifactCollection): Map<String, String> {
-        return artifacts.artifacts.associate { artifact ->
-            artifact.file.absolutePath to SourceOrigin.from(artifact.id.componentIdentifier).displayName
+    // Resolved when the task runs, after the project dependencies it consumes are built: a
+    // pure JVM module's jar does not exist yet when the configuration cache is stored.
+    private fun toArtifactMapping(artifacts: ArtifactCollection): Provider<Map<String, String>> {
+        return artifacts.resolvedArtifacts.map { results ->
+            results.associate { artifact ->
+                artifact.file.absolutePath to SourceOrigin.from(artifact.id.componentIdentifier).displayName
+            }
         }
     }
 }

@@ -85,8 +85,8 @@ highlander {
         classes = false                         // Scan Java/Kotlin classes in JARs/AARs
         excludeAndroidXValues = true            // Drop androidx.* sources from the values scan
         skipContentIdenticalDuplicates = true   // Drop byte-identical duplicates from the baseline
-        largeFiles = false                      // Record files at or above largeFileThresholdKb
-        largeFileThresholdKb = 200              // Per-file threshold for largeFiles, in KB
+        largeFiles = false                      // Record files at or above largeFilesThresholdKb
+        largeFilesThresholdKb = 200             // Per-file threshold for largeFiles, in KB
     }
 }
 ```
@@ -103,7 +103,7 @@ highlander {
 | `excludeAndroidXValues` | **`true`** | Filter out `androidx.*` sources from the values scan only |
 | `skipContentIdenticalDuplicates` | **`true`** | Omit byte-identical duplicates (classified `duplicate-safe`) from the baseline |
 | `largeFiles` | `false` | Record files at or above the threshold across the app and its dependencies (see [Large files](#large-files)) |
-| `largeFileThresholdKb` | `200` | Per-file threshold for `largeFiles`, in KB (1024 bytes) |
+| `largeFilesThresholdKb` | `200` | Per-file threshold for `largeFiles`, in KB (1024 bytes) |
 | `baselineDir` | `"highlander"` | Directory for baseline files |
 
 **Note on `excludeAndroidXValues`**: AndroidX components (Compose, Core, etc.) routinely share benign values declarations by design. Filtering them out keeps the values baseline signal-to-noise high. Set to `false` to include AndroidX entries. No effect unless `valuesResources = true`. Run with `--info` to see how many AndroidX sources were excluded and how many unknown-origin sources remain (unknown-origin sources such as `files()` or some composite-build setups are not matched by the filter).
@@ -181,7 +181,7 @@ Re-run `highlanderBaseline` to accept the transition.
 
 ## Large files
 
-Highlander already opens every dependency's `res/`, `assets/` and `jni/` to look for duplicates. With `largeFiles = true` the same walk also records every file at or above `largeFileThresholdKb`, together with the dependency (or module) it comes from. External dependencies come from AGP's cached artifact transforms, so no app build is needed; project modules provide their packaged resources, which builds a pure JVM module to its jar (the same cost `classes = true` has). On a 35-module app with 231 runtime artifacts, `highlanderRelease` took 1.0 s without the scan and 1.1–1.2 s with it. Measuring the APK after the fact is slower and says less: a release build is needed each time, resource names are shortened, and a bigger `dex` number does not say which library caused it.
+Highlander already opens every dependency's `res/`, `assets/` and `jni/` to look for duplicates. With `largeFiles = true` the same walk also records every file at or above `largeFilesThresholdKb`, together with the dependency (or module) it comes from. External dependencies come from AGP's cached artifact transforms, so no app build is needed; project modules provide their packaged resources, which builds a pure JVM module to its jar (the same cost `classes = true` has). Measuring the APK after the fact is slower and says less: a release build is needed each time, resource names are shortened, and a bigger `dex` number does not say which library caused it.
 
 What is scanned (one entry per file, no grouping):
 
@@ -190,7 +190,7 @@ What is scanned (one entry per file, no grouping):
 | `res/<type>/<file>` | dependency `res/` and the app module's res dirs | `values*/` is skipped — it compiles into `resources.arsc` |
 | `assets/<path>` | dependency and app assets | recursive |
 | `jni/<abi>/<lib>.so` | dependency and app `jniLibs` | one entry per ABI |
-| `java-res/<entry>` | Java resources inside dependency JARs and AAR `classes.jar`, and project modules' `src/main/resources` | everything that is not a `.class` file, minus AGP's default `packaging.resources.excludes` (`*.kotlin_metadata`, `protobuf.meta`, root `LICENSE`/`NOTICE`, dot- and underscore-prefixed names, …) and everything under `META-INF/`. These land at the APK root and are easy to miss |
+| `java-res/<entry>` | Java resources inside dependency JARs and AAR `classes.jar`, and project modules' `src/main/resources` | everything that is not a `.class` or `.so` file, minus AGP's default `packaging.resources.excludes` (`*.kotlin_metadata`, `protobuf.meta`, root `LICENSE`/`NOTICE`, dot- and underscore-prefixed names, …) and everything under `META-INF/`. These land at the APK root and are easy to miss |
 
 Not scanned: code size (`classes.jar`, dex — R8 decides what survives), `values*` resources and locale strings (not files), AAR root files such as `third_party_licenses.txt` (never packaged). Sizes are uncompressed sizes as found in the extracted artifacts.
 
@@ -212,13 +212,13 @@ The guard reports new files with `+`, removed ones with `-`, and a file whose so
 Highlander: Large files changed in :app (release)
 
 === large-files ===
-+ jni/arm64-v8a/libface_detector_v2_jni.so:
-+   - com.google.mlkit:face-detection:16.1.7 (8321 KB)
 ~ assets/NotoColorEmojiCompat.ttf:
     - androidx.emoji2:emoji2-bundled:1.5.0 (10521 KB) -> androidx.emoji2:emoji2-bundled:1.6.0 (10600 KB)
++ jni/arm64-v8a/libface_detector_v2_jni.so:
++   - com.google.mlkit:face-detection:16.1.7 (8321 KB)
 ```
 
-Limits: project-specific `packaging` excludes, `abiFilters` and ABI splits are not applied — the scan reports what dependencies ship, not what one device downloads (an AAB delivers only the device's ABI). The app module's own `src/main/resources` is not scanned. When one origin contributes the same path from two source sets, the first copy at or above the threshold is recorded.
+Limits: project-specific `packaging` excludes and `ignoreAssetsPattern`, `abiFilters` and ABI splits are not applied — the scan reports what dependencies ship, not what one device downloads (an AAB delivers only the device's ABI). The app module's own `src/main/resources` is not scanned. When one origin contributes the same path from two source sets, the first copy at or above the threshold is recorded. A library's resource directories carry the API level AGP adds for their qualifiers: `-v4` is dropped, so `drawable-hdpi-v4` and the app's `drawable-hdpi` are one key, but higher levels are kept (`drawable-night-v8` and the app's `drawable-night` are two).
 
 ## Investigating duplicates
 

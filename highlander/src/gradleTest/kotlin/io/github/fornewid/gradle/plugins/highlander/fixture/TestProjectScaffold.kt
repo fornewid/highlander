@@ -1,8 +1,11 @@
 package io.github.fornewid.gradle.plugins.highlander.fixture
 
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.Properties
 import java.util.UUID
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /**
  * Shared scaffolding for gradleTest project fixtures. Owns the temporary project
@@ -79,6 +82,42 @@ internal class TestProjectScaffold private constructor(val dir: File) {
         )
     }
 
+    /** Where [publishAar] writes; pass it to [writeRootBuildscript] as an extra repo. */
+    val localMavenRepo: File get() = dir.resolve("local-maven-repo")
+
+    /**
+     * Publishes an AAR and its POM to [localMavenRepo]. The AAR holds a manifest, an empty `R.txt`
+     * and an empty `classes.jar`, plus [entries] (path inside the AAR to content), which may
+     * replace any of them.
+     */
+    fun publishAar(coordinates: String, entries: Map<String, ByteArray>) {
+        val (group, name, version) = coordinates.split(':')
+        val artifactDir = localMavenRepo.resolve("${group.replace('.', '/')}/$name/$version").apply { mkdirs() }
+        val manifest = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+                package="$group.${name.replace('-', '_')}" />
+        """.trimIndent()
+        val defaults = mapOf(
+            "AndroidManifest.xml" to manifest.toByteArray(),
+            "R.txt" to ByteArray(0),
+            "classes.jar" to zip(emptyMap()),
+        )
+        artifactDir.resolve("$name-$version.aar").writeBytes(zip(defaults + entries))
+        artifactDir.resolve("$name-$version.pom").writeText(
+            """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <project xmlns="http://maven.apache.org/POM/4.0.0">
+                <modelVersion>4.0.0</modelVersion>
+                <groupId>$group</groupId>
+                <artifactId>$name</artifactId>
+                <version>$version</version>
+                <packaging>aar</packaging>
+            </project>
+            """.trimIndent()
+        )
+    }
+
     fun readFile(relativePath: String): String? {
         val file = dir.resolve(relativePath)
         return if (file.exists()) file.readText() else null
@@ -91,6 +130,17 @@ internal class TestProjectScaffold private constructor(val dir: File) {
     companion object {
 
         const val DEFAULT_AGP_VERSION: String = "8.5.0"
+
+        /** A ZIP (an AAR, or the `classes.jar` inside one) with the given entries. */
+        fun zip(entries: Map<String, ByteArray>): ByteArray = ByteArrayOutputStream().also { out ->
+            ZipOutputStream(out).use { zip ->
+                for ((name, bytes) in entries) {
+                    zip.putNextEntry(ZipEntry(name))
+                    zip.write(bytes)
+                    zip.closeEntry()
+                }
+            }
+        }.toByteArray()
 
         fun create(): TestProjectScaffold {
             val dir = File("build/gradleTest/${UUID.randomUUID()}").apply { mkdirs() }

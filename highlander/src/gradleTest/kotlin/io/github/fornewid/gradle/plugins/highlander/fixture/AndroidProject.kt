@@ -12,6 +12,13 @@ internal class AndroidProject(
     private val moduleJavaResources: Map<String, String> = emptyMap(),
     /** Extra `implementation` dependencies of the app module, e.g. "org.jetbrains.kotlin:kotlin-stdlib:1.9.24". */
     private val appDependencies: List<String> = emptyList(),
+    /** Java resources of a pure JVM module (`:jvmlib`) the app depends on, path to content; empty leaves it out. */
+    private val jvmModuleJavaResources: Map<String, String> = emptyMap(),
+    /**
+     * AARs published to a project-local Maven repo that the app depends on: coordinates to the
+     * entries inside the AAR ([TestProjectScaffold.publishAar] adds the rest).
+     */
+    private val externalAars: Map<String, Map<String, ByteArray>> = emptyMap(),
     /**
      * Flavor names to declare under a single `env` dimension on the app module.
      * Empty disables the flavor block and preserves single build-type variants.
@@ -24,8 +31,13 @@ internal class AndroidProject(
     val dir: File get() = scaffold.dir
 
     init {
-        scaffold.writeSettings("test-project", ":app", ":module1")
-        scaffold.writeRootBuildscript()
+        for ((coordinates, entries) in externalAars) scaffold.publishAar(coordinates, entries)
+
+        val libModules = listOfNotNull(":module1", ":jvmlib".takeIf { jvmModuleJavaResources.isNotEmpty() })
+        scaffold.writeSettings("test-project", ":app", *libModules.toTypedArray())
+        scaffold.writeRootBuildscript(
+            extraRepoUrls = if (externalAars.isEmpty()) emptyList() else listOf(scaffold.localMavenRepo.absolutePath),
+        )
         scaffold.writeGradleProperties()
         scaffold.writeLocalProperties()
 
@@ -37,6 +49,8 @@ internal class AndroidProject(
             }
             append("    }")
         }
+
+        val dependencies = libModules.map { "project('$it')" } + (appDependencies + externalAars.keys).map { "'$it'" }
 
         // app module
         val appDir = dir.resolve("app").apply { mkdirs() }
@@ -56,8 +70,7 @@ internal class AndroidProject(
             }
 
             dependencies {
-                implementation project(':module1')
-                ${appDependencies.joinToString("\n                ") { "implementation '$it'" }}
+                ${dependencies.joinToString("\n                ") { "implementation $it" }}
             }
 
             $pluginConfig
@@ -117,6 +130,17 @@ internal class AndroidProject(
             val file = module1SrcDir.resolve("resources/$path")
             file.parentFile.mkdirs()
             file.writeText(content)
+        }
+
+        // jvmlib - pure JVM module, built to its jar only when the app's variant asks for it
+        if (jvmModuleJavaResources.isNotEmpty()) {
+            val jvmlibDir = dir.resolve("jvmlib").apply { mkdirs() }
+            jvmlibDir.resolve("build.gradle").writeText("apply plugin: 'java-library'")
+            for ((path, content) in jvmModuleJavaResources) {
+                val file = jvmlibDir.resolve("src/main/resources/$path")
+                file.parentFile.mkdirs()
+                file.writeText(content)
+            }
         }
     }
 

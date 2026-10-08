@@ -126,6 +126,7 @@ internal class LargeFileScannerTest {
             "NOTICE.txt",
             "org/example/backup.bin~",
             "org/.svn/entries",
+            "com/sun/jna/linux-x86-64/libjnidispatch.so",
         )
 
         assertThat(packaged.filter { LargeFileScanner.isPackagedJavaResource(it) }).containsExactlyElementsIn(packaged)
@@ -145,6 +146,53 @@ internal class LargeFileScannerTest {
         assertThat(entries[0].sources).containsExactly(
             LargeFileSource(app, 11),
             LargeFileSource(lib, 15),
+        ).inOrder()
+    }
+
+    @Test
+    fun `drops the -v4 AGP adds to library resource directories so they match the app's`() {
+        val libRes = dir("lib-res").apply {
+            file("drawable-nodpi-v4/banner.jpg", 15 * 1024)
+            file("mipmap-anydpi-v26/ic_launcher.xml", 12 * 1024) // an API level of its own stays
+        }
+        val appRes = dir("app-res").apply { file("drawable-nodpi/banner.jpg", 11 * 1024) }
+
+        val entries = LargeFileScanner.scan(
+            listOf(libRes to lib, appRes to app), emptyList(), emptyList(), emptyList(), threshold,
+        )
+
+        assertThat(entries.map { it.key }).containsExactly(
+            "res/drawable-nodpi/banner.jpg",
+            "res/mipmap-anydpi-v26/ic_launcher.xml",
+        ).inOrder()
+        assertThat(entries[0].sources).containsExactly(
+            LargeFileSource(app, 11),
+            LargeFileSource(lib, 15),
+        ).inOrder()
+    }
+
+    @Test
+    fun `skips what AGP's default ignoreAssetsPattern leaves out of res and assets`() {
+        val res = dir("res").apply {
+            file("drawable/banner.png", 20 * 1024)
+            file("drawable/.DS_Store", 20 * 1024)
+            file("drawable/Thumbs.db", 20 * 1024)
+            file("drawable/banner.png~", 20 * 1024)
+            file("_backup/banner.png", 20 * 1024)
+        }
+        val assets = dir("assets").apply {
+            file("models/_model.bin", 20 * 1024) // only directories starting with _ are skipped
+            file("_raw/model.bin", 20 * 1024)
+            file(".git/objects/pack.bin", 20 * 1024)
+            file("CVS/Entries", 20 * 1024)
+            file("models/model.scc", 20 * 1024)
+        }
+
+        val entries = LargeFileScanner.scan(listOf(res to app), listOf(assets to app), emptyList(), emptyList(), threshold)
+
+        assertThat(entries.map { it.key }).containsExactly(
+            "assets/models/_model.bin",
+            "res/drawable/banner.png",
         ).inOrder()
     }
 

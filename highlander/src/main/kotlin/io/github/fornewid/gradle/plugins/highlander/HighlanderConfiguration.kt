@@ -65,7 +65,7 @@ public open class HighlanderConfiguration @Inject constructor(
     public var skipContentIdenticalDuplicates: Boolean = true
 
     /**
-     * Report files at or above [largeFileThresholdKb] across the app module and its
+     * Report files at or above [largeFilesThresholdKb] across the app module and its
      * dependencies: file-based resources (`res/`, excluding `values*`), assets, native
      * libraries per ABI, and Java resources inside dependency JARs. Disabled by default.
      *
@@ -85,5 +85,5 @@ public open class HighlanderConfiguration @Inject constructor(
      * into the baseline header, so changing it is reported as a baseline change.
      * Must be positive.
      */
-    public var largeFileThresholdKb: Int = 200
+    public var largeFilesThresholdKb: Int = 200
 }

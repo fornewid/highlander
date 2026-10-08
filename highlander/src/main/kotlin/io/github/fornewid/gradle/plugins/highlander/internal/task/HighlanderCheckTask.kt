@@ -49,7 +49,7 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
     @get:Input abstract val excludeAndroidXValues: Property<Boolean>
     @get:Input abstract val skipContentIdenticalDuplicates: Property<Boolean>
     @get:Input abstract val scanLargeFiles: Property<Boolean>
-    @get:Input abstract val largeFileThresholdKb: Property<Int>
+    @get:Input abstract val largeFilesThresholdKb: Property<Int>
 
     @get:Internal abstract val baselineDir: DirectoryProperty
     @get:Internal abstract val projectDir: DirectoryProperty
@@ -89,6 +89,12 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
     @TaskAction
     fun execute() {
         val variantName = configurationName.get()
+        if (scanLargeFiles.get() && largeFilesThresholdKb.get() <= 0) {
+            throw GradleException(
+                "Highlander configuration \"$variantName\": largeFilesThresholdKb must be positive, " +
+                    "was ${largeFilesThresholdKb.get()}."
+            )
+        }
         val dir = baselineDir.get().asFile.also { it.mkdirs() }
         val isBaseline = shouldBaseline.get()
         val diffs = mutableListOf<String>()
@@ -258,7 +264,7 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
         current: List<LargeFileEntry>,
         isBaseline: Boolean,
     ): String? {
-        val thresholdKb = largeFileThresholdKb.get()
+        val thresholdKb = largeFilesThresholdKb.get()
         val currentContent = LargeFilesBaselineFormat.serialize(thresholdKb, current)
         val relPath = file.relativeTo(projectDir.get().asFile)
 
@@ -342,7 +348,7 @@ internal abstract class HighlanderCheckTask : DefaultTask() {
             assetSources = assetSources,
             jniSources = jniSources,
             javaResSources = resolveFromMapping(javaResArtifactMapping),
-            thresholdBytes = largeFileThresholdKb.get().toLong() * 1024,
+            thresholdBytes = largeFilesThresholdKb.get().toLong() * 1024,
         )
     }
 

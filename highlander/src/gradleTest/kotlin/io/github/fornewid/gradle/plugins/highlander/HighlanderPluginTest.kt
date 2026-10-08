@@ -6,6 +6,7 @@ import io.github.fornewid.gradle.plugins.highlander.fixture.AndroidXValuesProjec
 import io.github.fornewid.gradle.plugins.highlander.fixture.Builder
 import io.github.fornewid.gradle.plugins.highlander.fixture.Builder.build
 import io.github.fornewid.gradle.plugins.highlander.fixture.Builder.buildAndFail
+import io.github.fornewid.gradle.plugins.highlander.fixture.TestProjectScaffold
 import org.junit.jupiter.api.Test
 
 internal class HighlanderPluginTest {
@@ -467,7 +468,7 @@ internal class HighlanderPluginTest {
                     resources = false
                     assets = false
                     largeFiles = true
-                    largeFileThresholdKb = 10
+                    largeFilesThresholdKb = 10
                 }
             }
         """.trimIndent()
@@ -488,6 +489,70 @@ internal class HighlanderPluginTest {
             // Default packaging excludes apply: nothing from META-INF and no .kotlin_metadata.
             assertThat(baseline).doesNotContain("META-INF")
             assertThat(baseline).doesNotContain("kotlin_metadata")
+        }
+    }
+
+    @Test
+    fun `largeFiles reads a pure JVM module that is not built yet when the configuration cache is stored`() {
+        AndroidProject(
+            pluginConfig = largeFilesConfig,
+            jvmModuleJavaResources = mapOf("data/table.bin" to blob(300)),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+
+            val baseline = project.readFile("app/highlander/releaseLargeFiles.txt")!!
+            assertThat(baseline).contains("java-res/data/table.bin:\n  - :jvmlib (300 KB)")
+        }
+    }
+
+    @Test
+    fun `largeFiles reads assets, res, native libs and java resources from an external AAR`() {
+        val big = blob(300).toByteArray()
+        AndroidProject(
+            pluginConfig = largeFilesConfig,
+            externalAars = mapOf(
+                "com.example:sdk:1.0" to mapOf(
+                    "assets/big.bin" to big,
+                    "res/raw/big.bin" to big,
+                    "jni/arm64-v8a/libbig.so" to big,
+                    "classes.jar" to TestProjectScaffold.zip(mapOf("data/model.bin" to big)),
+                ),
+            ),
+        ).use { project ->
+            build(project, ":app:highlanderBaselineRelease")
+
+            assertThat(project.readFile("app/highlander/releaseLargeFiles.txt")).isEqualTo(
+                """
+                # threshold=200KB
+                assets/big.bin:
+                  - com.example:sdk:1.0 (300 KB)
+                java-res/data/model.bin:
+                  - com.example:sdk:1.0 (300 KB)
+                jni/arm64-v8a/libbig.so:
+                  - com.example:sdk:1.0 (300 KB)
+                res/raw/big.bin:
+                  - com.example:sdk:1.0 (300 KB)
+
+                """.trimIndent()
+            )
+        }
+    }
+
+    @Test
+    fun `a non-positive threshold fails the highlander task, not the configuration`() {
+        val config = """
+            highlander {
+                configuration("release") {
+                    largeFiles = true
+                    largeFilesThresholdKb = 0
+                }
+            }
+        """.trimIndent()
+        AndroidProject(pluginConfig = config).use { project ->
+            build(project, ":app:help")
+
+            val result = buildAndFail(project, ":app:highlanderBaselineRelease")
+            assertThat(result.output).contains("largeFilesThresholdKb must be positive, was 0.")
         }
     }
 
